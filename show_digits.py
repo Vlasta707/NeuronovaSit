@@ -48,7 +48,7 @@ def show_random_digits():
             ax.imshow(x_train[index], cmap='gray')
             # Nastavení titulku subplotu s příslušným popiskem (skutečná číslice).
             # y_train[index] obsahuje popisek pro obrázek na daném indexu.
-            ax.set_title(f"Popisek: {y_train[index}")
+            ax.set_title(f"Popisek: {y_train[index]}") # Zde chyběla uzavírací složená závorka
             # Vypnutí os (číselných označení) pro čistší zobrazení obrázků.
             ax.axis('off')
         else:
@@ -65,3 +65,4 @@ def show_random_digits():
 # Tato část kódu se spustí pouze tehdy, když je skript spuštěn přímo (ne jako importovaný modul).
 if __name__ == "__main__":
     show_random_digits() # Volání funkce pro zobrazení náhodných číslic
+
