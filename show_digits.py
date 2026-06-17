@@ -41,11 +41,6 @@ def show_random_digits():
     # Procházení jednotlivých subplotů a zobrazení obrázků.
     # 'axes.flat' umožňuje iterovat přes všechny subplaty v poli 'axes' jako jednorozměrné pole.
     for i, ax in enumerate(axes.flat):
-        # Kontrola, zda je aktuální subplot určen pro zobrazení obrázku.
-        # (měli bychom zobrazit pouze 'num_images_to_show' obrázků)
-        # Podmínka 'if i < num_images_to_show' je vždy splněna,
-        # protože 'num_images_to_show' je nastaveno na celkový počet subplotů.
-        # Zbytečný 'else' blok byl odstraněn.
         index = random_indices[i] # Získání náhodně vybraného indexu pro aktuální obrázek
         # Zobrazení obrázku v aktuálním subplotu.
         # 'cmap='gray'' zajistí, že obrázek bude zobrazen ve stupních šedi,
