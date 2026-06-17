@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 # Import datové sady MNIST z TensorFlow Keras, která obsahuje obrázky ručně psaných číslic
 from tensorflow.keras.datasets import mnist
+
+
 def show_random_digits():
     """
     Načte datovou sadu MNIST, vybere náhodné obrázky číslic a zobrazí je v mřížce
