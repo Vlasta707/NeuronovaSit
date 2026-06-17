@@ -40,7 +40,9 @@ def show_random_digits():
     for i, ax in enumerate(axes.flat):
         # Kontrola, zda je aktuální subplot určen pro zobrazení obrázku.
         # (měli bychom zobrazit pouze 'num_images_to_show' obrázků)
-        if i < num_images_to_show:
+        # Podmínka 'if i < num_images_to_show' je vždy splněna,
+        # protože 'num_images_to_show' je nastaveno na celkový počet subplotů.
+        # Zbytečný 'else' blok byl odstraněn.
             index = random_indices[i] # Získání náhodně vybraného indexu pro aktuální obrázek
             # Zobrazení obrázku v aktuálním subplotu.
             # 'cmap='gray'' zajistí, že obrázek bude zobrazen ve stupních šedi,
@@ -51,11 +53,6 @@ def show_random_digits():
             ax.set_title(f"Popisek: {y_train[index]}")
             # Vypnutí os (číselných označení) pro čistší zobrazení obrázků.
             ax.axis('off')
-        else:
-            # Pokud je subplotů více než obrázků k zobrazení (např. 3x3=9, ale chtěli bychom 8),
-            # pak skryjeme zbývající prázdné subplaty.
-            ax.axis('off')
-
     # Automatické upravení rozložení subplotů tak, aby se nepřekrývaly.
     # 'rect' definuje obdélník pro obsah subplotů, aby se udělalo místo pro 'fig.suptitle'.
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
