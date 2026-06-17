@@ -43,16 +43,16 @@ def show_random_digits():
         # Podmínka 'if i < num_images_to_show' je vždy splněna,
         # protože 'num_images_to_show' je nastaveno na celkový počet subplotů.
         # Zbytečný 'else' blok byl odstraněn.
-            index = random_indices[i] # Získání náhodně vybraného indexu pro aktuální obrázek
-            # Zobrazení obrázku v aktuálním subplotu.
-            # 'cmap='gray'' zajistí, že obrázek bude zobrazen ve stupních šedi,
-            # což je pro MNIST typické.
-            ax.imshow(x_train[index], cmap='gray')
-            # Nastavení titulku subplotu s příslušným popiskem (skutečná číslice).
-            # y_train[index] obsahuje popisek pro obrázek na daném indexu.
-            ax.set_title(f"Popisek: {y_train[index]}")
-            # Vypnutí os (číselných označení) pro čistší zobrazení obrázků.
-            ax.axis('off')
+        index = random_indices[i] # Získání náhodně vybraného indexu pro aktuální obrázek
+        # Zobrazení obrázku v aktuálním subplotu.
+        # 'cmap='gray'' zajistí, že obrázek bude zobrazen ve stupních šedi,
+        # což je pro MNIST typické.
+        ax.imshow(x_train[index], cmap='gray')
+        # Nastavení titulku subplotu s příslušným popiskem (skutečná číslice).
+        # y_train[index] obsahuje popisek pro obrázek na daném indexu.
+        ax.set_title(f"Popisek: {y_train[index]}")
+        # Vypnutí os (číselných označení) pro čistší zobrazení obrázků.
+        ax.axis('off')
     # Automatické upravení rozložení subplotů tak, aby se nepřekrývaly.
     # 'rect' definuje obdélník pro obsah subplotů, aby se udělalo místo pro 'fig.suptitle'.
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
