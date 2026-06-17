@@ -1,6 +1,9 @@
-import matplotlib.pyplot as plt # Import knihovny Matplotlib pro vytváření grafů a zobrazování obrázků
-import numpy as np # Import knihovny NumPy pro práci s numerickými daty, zejména poli (arrays)
-from tensorflow.keras.datasets import mnist # Import datové sady MNIST z TensorFlow Keras, která obsahuje obrázky ručně psaných číslic
+# Import knihovny Matplotlib pro vytváření grafů a zobrazování obrázků
+import matplotlib.pyplot as plt
+# Import knihovny NumPy pro práci s numerickými daty, zejména poli (arrays)
+import numpy as np
+# Import datové sady MNIST z TensorFlow Keras, která obsahuje obrázky ručně psaných číslic
+from tensorflow.keras.datasets import mnist
 def show_random_digits():
     """
     Načte datovou sadu MNIST, vybere náhodné obrázky číslic a zobrazí je v mřížce
