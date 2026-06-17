@@ -2,8 +2,8 @@
 import matplotlib.pyplot as plt
 # Import knihovny NumPy pro práci s numerickými daty, zejména poli (arrays)
 import numpy as np
-# Import datové sady MNIST z TensorFlow Keras, která obsahuje obrázky ručně psaných číslic
-from tensorflow.keras.datasets import mnist
+# Import datové sady MNIST z torchvision, aby byla zachována konzistence s train.py
+from torchvision import datasets
 
 
 def show_random_digits():
@@ -13,10 +13,12 @@ def show_random_digits():
     data, se kterými se běžně pracuje v oblasti strojového učení.
     """
     # Načtení dat MNIST
-    # Data jsou rozdělena na trénovací a testovací sady.
-    # Pro účely zobrazení potřebujeme pouze trénovací data (x_train, y_train).
-    # Testovací data (x_test, y_test) ignorujeme pomocí podtržítka (_).
-    (x_train, y_train), (_, _) = mnist.load_data()
+    # Použijeme torchvision pro načtení dat, stejně jako v train.py
+    train_dataset = datasets.MNIST(root='./data', train=True, download=True)
+    
+    # Převedeme data na NumPy pole pro snadnější práci v matplotlib
+    x_train = train_dataset.data.numpy()
+    y_train = train_dataset.targets.numpy()
 
     # Normalizace pixelových hodnot na rozsah 0-1.
     # Původní hodnoty pixelů jsou v rozsahu 0-255. Dělením 255.0 je převedeme na float
@@ -62,4 +64,3 @@ def show_random_digits():
 # Tato část kódu se spustí pouze tehdy, když je skript spuštěn přímo (ne jako importovaný modul).
 if __name__ == "__main__":
     show_random_digits() # Volání funkce pro zobrazení náhodných číslic
-
