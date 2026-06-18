@@ -27,13 +27,14 @@ def show_random_digits():
     x_train = x_train / 255.0
 
     # Nastavení velikosti mřížky pro zobrazení obrázků.
-    num_rows = 3 # Počet řádků v mřížce
-    num_cols = 3 # Počet sloupců v mřížce
+    num_rows = 10 # Počet řádků v mřížce
+    num_cols = 10 # Počet sloupců v mřížce
     num_images_to_show = num_rows * num_cols # Celkový počet obrázků, které se zobrazí
     # Vytvoření subplotů (podgrafů) pro zobrazení obrázků.
     # 'fig' je celý obrázek (okno), 'axes' je pole jednotlivých subplotů.
-    # figsize=(8, 8) nastavuje velikost celého okna na 8x8 palců.
-    fig, axes = plt.subplots(num_rows, num_cols, figsize=(8, 8))
+    # figsize=(12, 12) nastavuje velikost celého okna na 12x12 palců, což umožní
+    # zobrazit 100 číslic, a přitom zůstat v rozumné velikosti pro monitor.
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=(12, 12))
     # Nastavení hlavního nadpisu pro celé okno s obrázky.
     fig.suptitle("Náhodné obrázky z MNIST s popisky", fontsize=16)
 
@@ -51,16 +52,17 @@ def show_random_digits():
         # což je pro MNIST typické.
         ax.imshow(x_train[index], cmap='gray')
         # Nastavení titulku subplotu s příslušným popiskem (skutečná číslice).
-        # y_train[index] obsahuje popisek pro obrázek na daném indexu.
-        ax.set_title(f"Popisek: {y_train[index]}")
+        # Zmenšujeme velikost písma na 8, aby se titulky nepřekrývaly u 100 obrázků.
+        ax.set_title(f"{y_train[index]}", fontsize=8)
         # Vypnutí os (číselných označení) pro čistší zobrazení obrázků.
         ax.axis('off')
     # Automatické upravení rozložení subplotů tak, aby se nepřekrývaly.
     # 'rect' definuje obdélník pro obsah subplotů, aby se udělalo místo pro 'fig.suptitle'.
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    # Zobrazení celého grafu (okna s obrázky).
+    # Zobrazení celého grafu (a tedy okna s obrázky).
     plt.show()
 
 # Tato část kódu se spustí pouze tehdy, když je skript spuštěn přímo (ne jako importovaný modul).
 if __name__ == "__main__":
     show_random_digits() # Volání funkce pro zobrazení náhodných číslic
+
