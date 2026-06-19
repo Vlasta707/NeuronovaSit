@@ -29,6 +29,46 @@ def create_vlist_numpy_arrays():
     """
     print(f"Začínám zpracování {NUM_IMAGES} obrázků a popisků pro klasifikaci 'OK' (číslice {OK_DIGIT}) vs. 'BAD' (ostatní)...")
 
+    # Seznamy pro ukládání dat před převedením na NumPy pole
+    images_list = []
+    labels_list = []
+
+    # --- Zpracování obrázků ---
+    print(f"Načítám a zpracovávám obrázky z '{IMAGE_DIR}'...")
+    for i in range(1, NUM_IMAGES + 1):
+        # Vytvoření jména souboru ve formátu "0001.jpg"
+        filename = f"{i:04d}.jpg"
+        filepath = os.path.join(IMAGE_DIR, filename)
+
+        if not os.path.exists(filepath):
+            print(f"Upozornění: Soubor {filepath} nenalezen. Přeskakuji.")
+            continue
+
+        try:
+            # Načtení obrázku
+            img = Image.open(filepath)
+            # Převedení na stupně šedi (L - luminance)
+            img = img.convert('L')
+            # Změna velikosti na 28x28 pixelů
+            img = img.resize((IMAGE_WIDTH, IMAGE_HEIGHT), Image.Resampling.LANCZOS)
+            # Převod PIL Image na NumPy pole
+            # Hodnoty budou v rozsahu 0-255, což odpovídá původnímu formátu MNIST
+            img_array = np.array(img)
+            images_list.append(img_array)
+
+        except Exception as e:
+            print(f"Chyba při zpracování obrázku {filepath}: {e}")
+            continue
+
+    if not images_list:
+        print("Chyba: Nebyly načteny žádné obrázky. Zkontrolujte cesty a názvy souborů.")
+        return
+
+    # Převod seznamu obrázků na jedno NumPy pole
+    # Výsledný tvar bude (počet_obrázků, výška, šířka), např. (1000, 28, 28)
+    vlist_train_images = np.array(images_list, dtype=np.uint8) # uint8 je pro 0-255
+
+
     # --- Zpracování popisků ---
     print(f"Načítám popisky z '{LABELS_FILE}' a převádím na binární (OK={OK_DIGIT} vs. BAD=ostatní)...")
     try:
