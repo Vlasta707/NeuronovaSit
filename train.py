@@ -1,144 +1,162 @@
-import torch # Importuje hlavní knihovnu PyTorch, která poskytuje tenzory a funkce pro hluboké učení.
-import torch.nn as nn # Importuje modul pro definování neuronových sítí a jejich vrstev.
-import torch.optim as optim # Importuje modul s optimalizátory, které upravují váhy sítě během tréninku.
-from torchvision import datasets, transforms # Importuje moduly z torchvision pro práci s obrazovými daty a transformacemi.
-from torch.utils.data import DataLoader # Importuje DataLoader pro efektivní načítání a dávkování dat.
-# 1. Nastavení transformací a stažení dat
-# Obrázky převedeme na Tensory (matice čísel) a normalizujeme je.
-# Transformace jsou operace, které se provedou s každým obrázkem před jeho vstupem do sítě.
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torchvision import datasets, transforms
+from torch.utils.data import DataLoader
+import numpy as np
+from PIL import Image
+
+# --- VLISTDataset pro načítání vlastních dat ---
+class VLISTDataset(torch.utils.data.Dataset):
+    def __init__(self, image_data_path, label_data_path, transform=None):
+        self.data = np.load(image_data_path)
+        self.targets = np.load(label_data_path)
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.targets)
+
+    def __getitem__(self, idx):
+        image = self.data[idx]
+        label = self.targets[idx]
+        image = Image.fromarray(image, mode='L') # 'L' pro grayscale
+
+        if self.transform:
+            image = self.transform(image)
+
+        label = torch.tensor(label, dtype=torch.long)
+        return image, label
+
+# 1. Nastavení transformací a dat
 transform = transforms.Compose([
-    transforms.ToTensor(), # Převede obrázky z PIL Image nebo numpy.ndarray na PyTorch Tensor.
-                           # Také škáluje hodnoty pixelů z [0, 255 na [0.0, 1.0].
-    transforms.Normalize((0.1307,), (0.3081,)) # Normalizuje Tensor s daným průměrem a směrodatnou odchylkou.
-                                            # Tyto hodnoty jsou specifické pro dataset MNIST a zlepšují trénink sítě.
-                                            # Normalizace posouvá hodnoty pixelů, aby měly průměr 0 a směrodatnou odchylku 1.
+    transforms.ToTensor(),
+    transforms.Normalize((0.1307,), (0.3081,))
 ])
 
-print("Stahuji a připravuji data...") # Informační zpráva pro uživatele.
-
-# Stáhne trénovací dataset MNIST (nebo ho načte, pokud už je stažený).
-# MNIST je dataset ručně psaných číslic (0-9). Každý obrázek má velikost 28x28 pixelů.
-train_dataset = datasets.MNIST(root='./data', # 'root' určuje cestu, kam se dataset stáhne/uloží.
-                               train=True,    # Určuje, že chceme trénovací část datasetu.
-                               download=True, # Pokud dataset není k dispozici, stáhne ho.
-                               transform=transform) # Aplikuje definované transformace na každý obrázek.
-
-# Stáhne testovací dataset MNIST. Testovací dataset se používá k ověření výkonu sítě na datech, která nikdy neviděla.
-test_dataset = datasets.MNIST(root='./data',
-                              train=False,   # Určuje, že chceme testovací část datasetu.
-                              download=True,
+print("Připravuji data (trénovací a testovací)...")
 # --- Použití VLISTDataset pro trénovací data ---
-# Vytvoří DataLoader pro trénovací data. DataLoader usnadňuje iteraci přes dataset
-# a automaticky rozděluje data do "dávek" (batchů).
-train_loader = DataLoader(train_dataset,  # Dataset, ze kterého se budou načítat data.
-                          batch_size=64,  # Počet vzorků v jedné dávce. Zde se bude trénovat na 64 obrázcích najednou.
-                          shuffle=True)   # Zamíchá data v každé epoše, což pomáhá zabránit přeučení a zlepšuje zobecnění.
+vlist_train_images_path = './data/vlist_train_images.npy'
+vlist_train_labels_path = './data/vlist_train_labels.npy'
 
-# Vytvoří DataLoader pro testovací data.
+train_dataset = VLISTDataset(image_data_path=vlist_train_images_path,
+                             label_data_path=vlist_train_labels_path,
+                             transform=transform)
+
+# --- Použití VLISTDataset pro testovací data ---
+vlist_test_images_path = './data/vlist_test_images.npy'
+vlist_test_labels_path = './data/vlist_test_labels.npy'
+
+test_dataset = VLISTDataset(image_data_path=vlist_test_images_path,
+                            label_data_path=vlist_test_labels_path,
+                            transform=transform)
+
+
+train_loader = DataLoader(train_dataset,
+                          batch_size=64,
+                          shuffle=True)
 test_loader = DataLoader(test_dataset,
+                         batch_size=200,
+                         shuffle=False)
 
-                         batch_size=1000, # Zde můžete nastavit např. batch_size=200 pro celou sadu
-                         shuffle=False)   # Testovací data obvykle nemícháme, aby byly výsledky konzistentní.
-# 2. Definice architektury neuronové sítě
-# Každá neuronová síť v PyTorch dědí z nn.Module.
+# 2. Definice architektury neuronové sítě - NYNÍ CNN!
 class CislicovaSit(nn.Module):
-    # Konstruktor třídy, zde definujeme vrstvy sítě.
     def __init__(self):
-        super(CislicovaSit, self).__init__() # Volá konstruktor rodičovské třídy nn.Module.
+        super(CislicovaSit, self).__init__()
+        # První konvoluční vrstva
+        # Vstup: 1 kanál (stupně šedi), 32 výstupních kanálů (filtrů)
+        # Kernel: 3x3, Padding: 1 (zachovává rozměry obrázku po konvoluci)
+        # Výstup z Conv1: (Batch_size, 32, 28, 28)
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
+        # První Max Pooling vrstva
+        # Zmenší rozměry na polovinu (28x28 -> 14x14)
+        # Výstup z Pool1: (Batch_size, 32, 14, 14)
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        # fc1 je první plně propojená (fully connected) vrstva.
-        # Vstup: 28x28 pixelů = 784 neuronů (každý pixel je jeden vstupní neuron).
-        self.fc2 = nn.Linear(128, 10)
+        # Druhá konvoluční vrstva
+        # Vstup: 32 kanálů (z předchozí vrstvy), 64 výstupních kanálů
+        # Kernel: 3x3, Padding: 1
+        # Výstup z Conv2: (Batch_size, 64, 14, 14)
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
+        # Druhá Max Pooling vrstva
+        # Zmenší rozměry na polovinu (14x14 -> 7x7)
+        # Výstup z Pool2: (Batch_size, 64, 7, 7)
 
+        # Plně propojené (Fully Connected) vrstvy pro klasifikaci
+        # Vstup: 64 kanálů * 7 * 7 (po zploštění) = 3136 neuronů
+        # Výstup: 128 neuronů ve skryté vrstvě
+        self.fc1 = nn.Linear(64 * 7 * 7, 128)
+        # Výstupní plně propojená vrstva
+        # Vstup: 128 neuronů
+        # Výstup: 2 neurony pro binární klasifikaci "OK" / "BAD"
+        self.fc2 = nn.Linear(128, 2)
 
-        # ReLU (Rectified Linear Unit) je aktivační funkce.
-        # Bez aktivačních funkcí by síť byla jen posloupností lineárních transformací.
+        # Aktivační funkce ReLU (pro konvoluční i plně propojené vrstvy)
         self.relu = nn.ReLU()
 
-        # fc2 je druhá plně propojená (výstupní) vrstva.
-        # Vstup: 128 neuronů ze skryté vrstvy.
-        # Výstup: 10 neuronů (pro 10 tříd: číslice 0-9).
-        # Každý z těchto 10 výstupů představuje "skóre" pro danou číslici.
-
-
-        self.fc2 = nn.Linear(128, 2) # Změněno na 2 výstupní neurony pro binární klasifikaci (OK/BAD)
-    # Metoda 'forward' definuje, jak data procházejí sítí.
-    # 'x' je vstupní tensor (obrázek nebo dávka obrázků).
     def forward(self, x):
-        # Zploštění obrázku z 2D (28x28 pixelů) do 1D řádku (784 pixelů).
-        # '-1' říká PyTorchi, aby automaticky odvodil velikost dávky (batch size).
-        x = x.view(-1, 28 * 28)
-        # Data prochází první plně propojenou vrstvou (fc1) a poté aktivační funkcí ReLU.
+        # Konvoluce -> ReLU -> Pooling
+        x = self.pool(self.relu(self.conv1(x)))
+        # Konvoluce -> ReLU -> Pooling
+        x = self.pool(self.relu(self.conv2(x)))
+
+        # Zploštění dat pro plně propojené vrstvy
+        # x.size(0) je batch_size
+        x = x.view(x.size(0), -1) # Tvar (batch_size, 64 * 7 * 7)
+
+        # Plně propojené vrstvy
         x = self.relu(self.fc1(x))
-        # Data prochází druhou (výstupní) plně propojenou vrstvou (fc2).
-        # Výstupem jsou "logity" – surová skóre pro každou z 10 tříd.
-        x = self.fc2(x)
-        return x # Vrátí výstupy sítě.
+        x = self.fc2(x) # Výstup pro 2 třídy
+        return x
 # Inicializace modelu, ztrátové funkce a optimalizátoru.
-model = CislicovaSit() # Vytvoří instanci naší neuronové sítě.
+model = CislicovaSit()
 
-# Definice ztrátové funkce (Loss Function).
-# CrossEntropyLoss je běžná ztrátová funkce pro klasifikační problémy s více třídami.
-# Měří, jak moc se předpovědi sítě liší od skutečných štítků.
+# Přesun modelu na GPU, pokud je k dispozici
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+print(f"Používám zařízení: {device}")
 criterion = nn.CrossEntropyLoss()
+optimizer = optim.SGD(model.parameters(),
+                      lr=0.01,
+                      momentum=0.9)
 
-# Definice optimalizátoru. Optimalizátor je algoritmus, který upravuje váhy sítě
-# na základě vypočítaných gradientů (sklonů) ztrátové funkce.
-# SGD (Stochastic Gradient Descent) je základní optimalizátor.
-optimizer = optim.SGD(model.parameters(), # Řekne optimalizátoru, které parametry (váhy a bias) sítě má optimalizovat.
-                      lr=0.01,           # 'lr' (learning rate) určuje, jak velkým krokem se budou váhy upravovat.
-                                         # Menší lr = pomalejší, ale stabilnější učení; větší lr = rychlejší, ale nestabilní.
-                      momentum=0.9)      # 'momentum' pomáhá optimalizátoru překonat lokální minima a zrychluje konvergenci.
 # 3. Trénovací cyklus (Training Loop)
-# Tato funkce trénuje model po zadaný počet epoch.
 def train(model, train_loader, optimizer, criterion, epochs=3):
-    model.train() # Nastaví model do trénovacího režimu. To aktivuje například dropout nebo batch normalization, pokud by byly použity.
-    for epoch in range(epochs): # Prochází se trénovací data tolikrát, kolik je zadáno 'epochs'.
-        running_loss = 0.0 # Proměnná pro sledování kumulované ztráty v aktuální epoše.
-        # Iteruje přes všechny dávky (batche) v trénovacím DataLoaderu.
-        # 'batch_idx' je index dávky, 'data' jsou obrázky a 'target' jsou správné štítky.
+    model.train()
+    print(f"\nSpouštím trénink na {epochs} epoch...")
+    for epoch in range(epochs):
+        running_loss = 0.0
         for batch_idx, (data, target) in enumerate(train_loader):
-            optimizer.zero_grad()   # Vynulování přechodů (gradientů) z minula.
-                                    # Gradienty se kumulují, takže je nutné je vynulovat pro každou novou dávku.
-            output = model(data)    # Dopředný chod (forward pass) - data se proženou sítí a získáme predikce (output).
-            loss = criterion(output, target) # Výpočet chyby (ztráty) porovnáním predikcí sítě a skutečných štítků.
-            loss.backward()         # Zpětný chod (backward pass) - vypočítá gradienty ztráty vzhledem k vahám sítě.
-                                    # Tyto gradienty ukazují směr a velikost, jak se mají váhy změnit.
-            optimizer.step()        # Úprava vah neuronů na základě vypočítaných gradientů.
-                                    # Optimalizátor aplikuje pravidla učení (např. SGD) a aktualizuje parametry modelu.
+            # Přesun dat na zařízení (CPU/GPU)
+            data, target = data.to(device), target.to(device)
 
-            running_loss += loss.item() # Přidá hodnotu ztráty aktuální dávky k celkové ztrátě pro tisk. .item() získá skalární Python číslo z tensoru.
-            if batch_idx % 200 == 199: # Tiskne průběžnou ztrátu každých 200 dávek.
-                print(f"Epocha: {epoch+1} | Dávka: {batch_idx+1}/{len(train_loader)} | Ztráta (Loss): {running_loss / 200:.4f}")
-                running_loss = 0.0 # Resetuje kumulovanou ztrátu pro další interval tisku.
+            optimizer.zero_grad()
+            output = model(data)
+            loss = criterion(output, target)
+            loss.backward()
+            optimizer.step()
+
+            running_loss += loss.item()
+            if batch_idx % 20 == 19:
+                print(f"Epocha: {epoch+1} | Dávka: {batch_idx+1}/{len(train_loader)} | Ztráta (Loss): {running_loss / 20:.4f}")
+                running_loss = 0.0
 # 4. Testování úspěšnosti sítě
-# Tato funkce vyhodnocuje model na testovacím datasetu.
 def test(model, test_loader):
-    model.eval() # Nastaví model do evaluačního režimu. To deaktivuje chování specifické pro trénink (např. dropout).
-    correct = 0 # Počítadlo pro správně klasifikované vzorky.
-    # Kontext 'torch.no_grad()' říká PyTorchi, aby během tohoto bloku nepočítal ani neukládal gradienty.
-    # To šetří paměť a zrychluje výpočet, protože gradienty nejsou při testování potřeba.
+    model.eval()
+    correct = 0
+    total = 0
     with torch.no_grad():
-        for data, target in test_loader: # Iteruje přes všechny dávky v testovacím DataLoaderu.
-            output = model(data) # Dopředný chod - získá predikce sítě pro testovací data.
-    # Vypíše celkovou úspěšnost na testovacích datech.
-    print(f"\nVýsledná úspěšnost na testovacích datech: {correct}/{len(test_loader.dataset)} ({100. * correct / len(test_loader.dataset):.2f}%)")
-                                                    # 'dim=1' znamená, že se argmax aplikuje podél dimenze pro třídy.
-                                                    # 'keepdim=True' zachová dimenzi výstupu, což je užitečné pro porovnání.
-            # 'target.view_as(pred)' zajistí, že mají stejný tvar pro porovnání.
-            # '.eq()' provede element-wise porovnání (True, kde se rovnají).
-            # '.sum().item()' sečte všechny True hodnoty (převedené na 1) a převede výsledek na Python číslo.
+        for data, target in test_loader:
+            # Přesun dat na zařízení (CPU/GPU)
+            data, target = data.to(device), target.to(device)
+
+            output = model(data)
+            pred = output.argmax(dim=1, keepdim=True)
             correct += pred.eq(target.view_as(pred)).sum().item()
+            total += target.size(0)
 
+    print(f"\nVýsledná úspěšnost na testovacích datech (OK vs. BAD): {correct}/{total} ({100. * correct / total:.2f}%)")
 
-
-    # Zde se úspěšnost počítá správně, protože test_dataset nyní také obsahuje
-    # binární popisky (0/1) odpovídající tréninku.
-    print(f"\nVýsledná úspěšnost na testovacích datech (OK vs. BAD): {correct}/{len(test_loader.dataset)} ({100. * correct / len(test_loader.dataset):.2f}%)")
-
-# Spuštění celého procesu
-# Toto je standardní Python konstrukce, která zajišťuje, že kód uvnitř bloku
-# se spustí pouze tehdy, když je soubor spuštěn přímo (ne když je importován jako modul).
 if __name__ == "__main__":
-    train(model, train_loader, optimizer, criterion, epochs=3) # Zavolá trénovací funkci. Model se bude učit 3 epochy.
-    test(model, test_loader) # Po tréninku zavolá testovací funkci, aby se vyhodnotila úspěšnost modelu.
+    train(model, train_loader, optimizer, criterion, epochs=3)
+    test(model, test_loader)
+
