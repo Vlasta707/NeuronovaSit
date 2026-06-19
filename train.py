@@ -3,59 +3,42 @@ import torch.nn as nn
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
-import numpy as np
-from PIL import Image
+# numpy a PIL už nepotřebujeme, protože nebudeme načítat VLISTDataset
+# import numpy as np
+# from PIL import Image
 
-# --- VLISTDataset pro načítání vlastních dat ---
-class VLISTDataset(torch.utils.data.Dataset):
-    def __init__(self, image_data_path, label_data_path, transform=None):
-        self.data = np.load(image_data_path)
-        self.targets = np.load(label_data_path)
-        self.transform = transform
-
-    def __len__(self):
-        return len(self.targets)
-
-    def __getitem__(self, idx):
-        image = self.data[idx]
-        label = self.targets[idx]
-        image = Image.fromarray(image, mode='L') # 'L' pro grayscale
-
-        if self.transform:
-            image = self.transform(image)
-
-        label = torch.tensor(label, dtype=torch.long)
-        return image, label
+# --- Nastavení pro binární klasifikaci (MUSÍ ODPOVÍDAT VÝSTUPU MODELU) ---
+# Zde definujeme, která číslice z MNISTu bude považována za "OK".
+# Všechny ostatní číslice budou automaticky "BAD".
+OK_DIGIT = 5 # Např. číslice 5 je "OK", ostatní "BAD"
 
 # 1. Nastavení transformací a dat
 transform = transforms.Compose([
     transforms.ToTensor(),
-    transforms.Normalize((0.1307,), (0.3081,))
+    transforms.Normalize((0.1307,), (0.3081,)) # Standardní normalizace pro MNIST
 ])
 
-print("Připravuji data (trénovací a testovací)...")
-# --- Použití VLISTDataset pro trénovací data ---
-vlist_train_images_path = './data/vlist_train_images.npy'
-vlist_train_labels_path = './data/vlist_train_labels.npy'
+print("Připravuji data (trénovací a testovací MNIST)...")
 
-train_dataset = VLISTDataset(image_data_path=vlist_train_images_path,
-                             label_data_path=vlist_train_labels_path,
-                             transform=transform)
+# --- Použití standardního MNIST datasetu ---
+# Načtení trénovacího datasetu MNIST
+train_dataset = datasets.MNIST(root='./data',
+                               train=True,
+                               download=True,
+                               transform=transform)
 
-# --- Použití VLISTDataset pro testovací data ---
-vlist_test_images_path = './data/vlist_test_images.npy'
-vlist_test_labels_path = './data/vlist_test_labels.npy'
-
-test_dataset = VLISTDataset(image_data_path=vlist_test_images_path,
-                            label_data_path=vlist_test_labels_path,
-                            transform=transform)
-
+# Načtení testovacího datasetu MNIST
+test_dataset = datasets.MNIST(root='./data',
+                              train=False,
+                              download=True,
+                              transform=transform)
 
 train_loader = DataLoader(train_dataset,
                           batch_size=64,
                           shuffle=True)
+
 test_loader = DataLoader(test_dataset,
-                         batch_size=200,
+                         batch_size=1000, # Pro testování s MNIST je 1000 v pořádku
                          shuffle=False)
 
 # 2. Definice architektury neuronové sítě - NYNÍ CNN!
@@ -87,7 +70,7 @@ class CislicovaSit(nn.Module):
         self.fc1 = nn.Linear(64 * 7 * 7, 128)
         # Výstupní plně propojená vrstva
         # Vstup: 128 neuronů
-        # Výstup: 2 neurony pro binární klasifikaci "OK" / "BAD"
+        # Výstup: 2 neurony pro binární klasifikaci "BAD" (index 0) / "OK" (index 1)
         self.fc2 = nn.Linear(128, 2)
 
         # Aktivační funkce ReLU (pro konvoluční i plně propojené vrstvy)
@@ -107,6 +90,7 @@ class CislicovaSit(nn.Module):
         x = self.relu(self.fc1(x))
         x = self.fc2(x) # Výstup pro 2 třídy
         return x
+
 # Inicializace modelu, ztrátové funkce a optimalizátoru.
 model = CislicovaSit()
 
@@ -114,6 +98,7 @@ model = CislicovaSit()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 print(f"Používám zařízení: {device}")
+
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(model.parameters(),
                       lr=0.01,
@@ -125,7 +110,10 @@ def train(model, train_loader, optimizer, criterion, epochs=3):
     print(f"\nSpouštím trénink na {epochs} epoch...")
     for epoch in range(epochs):
         running_loss = 0.0
-        for batch_idx, (data, target) in enumerate(train_loader):
+        for batch_idx, (data, target_original) in enumerate(train_loader):
+            # Převod původního MNIST targetu na binární (0 pro BAD, 1 pro OK)
+            target = (target_original == OK_DIGIT).long()
+
             # Přesun dat na zařízení (CPU/GPU)
             data, target = data.to(device), target.to(device)
 
@@ -136,27 +124,30 @@ def train(model, train_loader, optimizer, criterion, epochs=3):
             optimizer.step()
 
             running_loss += loss.item()
-            if batch_idx % 20 == 19:
-                print(f"Epocha: {epoch+1} | Dávka: {batch_idx+1}/{len(train_loader)} | Ztráta (Loss): {running_loss / 20:.4f}")
+            if batch_idx % 200 == 199: # Standardní tisk pro 60k MNIST dat
+                print(f"Epocha: {epoch+1} | Dávka: {batch_idx+1}/{len(train_loader)} | Ztráta (Loss): {running_loss / 200:.4f}")
                 running_loss = 0.0
+
 # 4. Testování úspěšnosti sítě
 def test(model, test_loader):
     model.eval()
     correct = 0
     total = 0
     with torch.no_grad():
-        for data, target in test_loader:
+        for data, target_original in test_loader:
+            # Převod původního MNIST targetu na binární (0 pro BAD, 1 pro OK)
+            target = (target_original == OK_DIGIT).long()
+
             # Přesun dat na zařízení (CPU/GPU)
             data, target = data.to(device), target.to(device)
 
             output = model(data)
-            pred = output.argmax(dim=1, keepdim=True)
+            pred = output.argmax(dim=1, keepdim=True) # Získá predikci: 0 pro "BAD", 1 pro "OK"
             correct += pred.eq(target.view_as(pred)).sum().item()
             total += target.size(0)
 
-    print(f"\nVýsledná úspěšnost na testovacích datech (OK vs. BAD): {correct}/{total} ({100. * correct / total:.2f}%)")
+    print(f"\nVýsledná úspěšnost na testovacích datech (OK ({OK_DIGIT}) vs. BAD): {correct}/{total} ({100. * correct / total:.2f}%)")
 
 if __name__ == "__main__":
     train(model, train_loader, optimizer, criterion, epochs=3)
     test(model, test_loader)
-
