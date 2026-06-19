@@ -29,36 +29,6 @@ def create_vlist_numpy_arrays():
     """
     print(f"Začínám zpracování {NUM_IMAGES} obrázků a popisků pro klasifikaci 'OK' (číslice {OK_DIGIT}) vs. 'BAD' (ostatní)...")
 
-    images_list = []
-    labels_list = []
-
-    # --- Zpracování obrázků ---
-    print(f"Načítám a zpracovávám obrázky z '{IMAGE_DIR}'...")
-    for i in range(1, NUM_IMAGES + 1):
-        filename = f"{i:04d}.jpg"
-        filepath = os.path.join(IMAGE_DIR, filename)
-
-        if not os.path.exists(filepath):
-            print(f"Upozornění: Soubor {filepath} nenalezen. Přeskakuji.")
-            continue
-
-        try:
-            img = Image.open(filepath)
-            img = img.convert('L')
-            img = img.resize((IMAGE_WIDTH, IMAGE_HEIGHT), Image.Resampling.LANCZOS)
-            img_array = np.array(img)
-            images_list.append(img_array)
-
-        except Exception as e:
-            print(f"Chyba při zpracování obrázku {filepath}: {e}")
-            continue
-
-    if not images_list:
-        print("Chyba: Nebyly načteny žádné obrázky. Zkontrolujte cesty a názvy souborů.")
-        return
-
-    vlist_train_images = np.array(images_list, dtype=np.uint8)
-
     # --- Zpracování popisků ---
     print(f"Načítám popisky z '{LABELS_FILE}' a převádím na binární (OK={OK_DIGIT} vs. BAD=ostatní)...")
     try:
