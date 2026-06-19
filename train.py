@@ -1,94 +1,93 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torchvision import datasets, transforms
+from torchvision import transforms
 from torch.utils.data import DataLoader
-# numpy a PIL už nepotřebujeme, protože nebudeme načítat VLISTDataset
-# import numpy as np
-# from PIL import Image
+import numpy as np # Potřebné pro VLISTDataset
+from PIL import Image # Potřebné pro VLISTDataset
 
-# --- Nastavení pro binární klasifikaci (MUSÍ ODPOVÍDAT VÝSTUPU MODELU) ---
-# Zde definujeme, která číslice z MNISTu bude považována za "OK".
-# Všechny ostatní číslice budou automaticky "BAD".
-OK_DIGIT = 5 # Např. číslice 5 je "OK", ostatní "BAD"
+# --- VLISTDataset pro načítání vlastních dat ---
+# Tato třída načítá vaše obrázky a popisky z .npy souborů.
+class VLISTDataset(torch.utils.data.Dataset):
+    def __init__(self, image_data_path, label_data_path, transform=None):
+        self.data = np.load(image_data_path) # Načte obrázky
+        self.targets = np.load(label_data_path) # Načte již binární popisky (0/1)
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.targets)
+
+    def __getitem__(self, idx):
+        image = self.data[idx]
+        label = self.targets[idx]
+        image = Image.fromarray(image, mode='L') # Převede numpy array na PIL Image (grayscale)
+
+        if self.transform:
+            image = self.transform(image)
+
+        # Popisky jsou již binární (0 nebo 1) a jsou typu int64 z numpy, převedeme je na torch.long
+        label = torch.tensor(label, dtype=torch.long)
+        return image, label
 
 # 1. Nastavení transformací a dat
 transform = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize((0.1307,), (0.3081,)) # Standardní normalizace pro MNIST
+    transforms.ToTensor(), # Převede obrázky na PyTorch Tensor a škáluje [0, 255] na [0.0, 1.0].
+    transforms.Normalize((0.1307,), (0.3081,)) # Normalizace s hodnotami pro MNIST (dobré pro šedotónové obrázky)
 ])
 
-print("Připravuji data (trénovací a testovací MNIST)...")
+print("Připravuji VLASTNÍ data (trénovací a testovací VLIST)...")
 
-# --- Použití standardního MNIST datasetu ---
-# Načtení trénovacího datasetu MNIST
-train_dataset = datasets.MNIST(root='./data',
-                               train=True,
-                               download=True,
-                               transform=transform)
+# --- Použití VLISTDataset pro trénovací data ---
+vlist_train_images_path = './data/vlist_train_images.npy'
+vlist_train_labels_path = './data/vlist_train_labels.npy'
 
-# Načtení testovacího datasetu MNIST
-test_dataset = datasets.MNIST(root='./data',
-                              train=False,
-                              download=True,
-                              transform=transform)
+train_dataset = VLISTDataset(image_data_path=vlist_train_images_path,
+                             label_data_path=vlist_train_labels_path,
+                             transform=transform)
+
+# --- Použití VLISTDataset pro testovací data ---
+vlist_test_images_path = './data/vlist_test_images.npy'
+vlist_test_labels_path = './data/vlist_test_labels.npy'
+
+test_dataset = VLISTDataset(image_data_path=vlist_test_images_path,
+                            label_data_path=vlist_test_labels_path,
+                            transform=transform)
+
 
 train_loader = DataLoader(train_dataset,
                           batch_size=64,
                           shuffle=True)
 
 test_loader = DataLoader(test_dataset,
-                         batch_size=1000, # Pro testování s MNIST je 1000 v pořádku
+                         batch_size=200, # Pro 200 testovacích obrázků můžeme otestovat celou sadu najednou
                          shuffle=False)
 
-# 2. Definice architektury neuronové sítě - NYNÍ CNN!
+# 2. Definice architektury neuronové sítě - CNN
 class CislicovaSit(nn.Module):
     def __init__(self):
         super(CislicovaSit, self).__init__()
-        # První konvoluční vrstva
-        # Vstup: 1 kanál (stupně šedi), 32 výstupních kanálů (filtrů)
-        # Kernel: 3x3, Padding: 1 (zachovává rozměry obrázku po konvoluci)
-        # Výstup z Conv1: (Batch_size, 32, 28, 28)
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
-        # První Max Pooling vrstva
-        # Zmenší rozměry na polovinu (28x28 -> 14x14)
-        # Výstup z Pool1: (Batch_size, 32, 14, 14)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-
-        # Druhá konvoluční vrstva
-        # Vstup: 32 kanálů (z předchozí vrstvy), 64 výstupních kanálů
-        # Kernel: 3x3, Padding: 1
-        # Výstup z Conv2: (Batch_size, 64, 14, 14)
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
-        # Druhá Max Pooling vrstva
-        # Zmenší rozměry na polovinu (14x14 -> 7x7)
-        # Výstup z Pool2: (Batch_size, 64, 7, 7)
 
-        # Plně propojené (Fully Connected) vrstvy pro klasifikaci
-        # Vstup: 64 kanálů * 7 * 7 (po zploštění) = 3136 neuronů
-        # Výstup: 128 neuronů ve skryté vrstvě
+        # Výpočet velikosti vstupu pro fc1 po konvolucích a pooling
+        # Původní MNIST obrázek 28x28
+        # Po conv1 (padding 1) -> 28x28
+        # Po pool (kernel 2, stride 2) -> 14x14
+        # Po conv2 (padding 1) -> 14x14
+        # Po pool (kernel 2, stride 2) -> 7x7
+        # 64 výstupních kanálů z conv2, proto 64 * 7 * 7
         self.fc1 = nn.Linear(64 * 7 * 7, 128)
-        # Výstupní plně propojená vrstva
-        # Vstup: 128 neuronů
-        # Výstup: 2 neurony pro binární klasifikaci "BAD" (index 0) / "OK" (index 1)
+        # Výstupní vrstva pro binární klasifikaci "BAD" (index 0) / "OK" (index 1)
         self.fc2 = nn.Linear(128, 2)
-
-        # Aktivační funkce ReLU (pro konvoluční i plně propojené vrstvy)
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        # Konvoluce -> ReLU -> Pooling
         x = self.pool(self.relu(self.conv1(x)))
-        # Konvoluce -> ReLU -> Pooling
         x = self.pool(self.relu(self.conv2(x)))
-
-        # Zploštění dat pro plně propojené vrstvy
-        # x.size(0) je batch_size
-        x = x.view(x.size(0), -1) # Tvar (batch_size, 64 * 7 * 7)
-
-        # Plně propojené vrstvy
+        x = x.view(x.size(0), -1) # Zploštění
         x = self.relu(self.fc1(x))
-        x = self.fc2(x) # Výstup pro 2 třídy
+        x = self.fc2(x)
         return x
 
 # Inicializace modelu, ztrátové funkce a optimalizátoru.
@@ -107,14 +106,11 @@ optimizer = optim.SGD(model.parameters(),
 # 3. Trénovací cyklus (Training Loop)
 def train(model, train_loader, optimizer, criterion, epochs=3):
     model.train()
-    print(f"\nSpouštím trénink na {epochs} epoch...")
+    print(f"\nSpouštím trénink na {epochs} epoch s vlastními VLIST daty...")
     for epoch in range(epochs):
         running_loss = 0.0
-        for batch_idx, (data, target_original) in enumerate(train_loader):
-            # Převod původního MNIST targetu na binární (0 pro BAD, 1 pro OK)
-            target = (target_original == OK_DIGIT).long()
-
-            # Přesun dat na zařízení (CPU/GPU)
+        for batch_idx, (data, target) in enumerate(train_loader):
+            # Popisky 'target' jsou již binární (0 nebo 1) díky create_vlist_data.py
             data, target = data.to(device), target.to(device)
 
             optimizer.zero_grad()
@@ -124,8 +120,8 @@ def train(model, train_loader, optimizer, criterion, epochs=3):
             optimizer.step()
 
             running_loss += loss.item()
-            if batch_idx % 200 == 199: # Standardní tisk pro 60k MNIST dat
-                print(f"Epocha: {epoch+1} | Dávka: {batch_idx+1}/{len(train_loader)} | Ztráta (Loss): {running_loss / 200:.4f}")
+            if batch_idx % 20 == 19: # Upravený tisk pro menší trénovací sadu (1000 obrázků)
+                print(f"Epocha: {epoch+1} | Dávka: {batch_idx+1}/{len(train_loader)} | Ztráta (Loss): {running_loss / 20:.4f}")
                 running_loss = 0.0
 
 # 4. Testování úspěšnosti sítě
@@ -133,12 +129,10 @@ def test(model, test_loader):
     model.eval()
     correct = 0
     total = 0
+    print("\nVyhodnocuji model na vlastní testovací VLIST sadě (OK vs. BAD)...")
     with torch.no_grad():
-        for data, target_original in test_loader:
-            # Převod původního MNIST targetu na binární (0 pro BAD, 1 pro OK)
-            target = (target_original == OK_DIGIT).long()
-
-            # Přesun dat na zařízení (CPU/GPU)
+        for data, target in test_loader:
+            # Popisky 'target' jsou již binární (0 nebo 1) díky create_vlist_test_data.py
             data, target = data.to(device), target.to(device)
 
             output = model(data)
@@ -146,7 +140,7 @@ def test(model, test_loader):
             correct += pred.eq(target.view_as(pred)).sum().item()
             total += target.size(0)
 
-    print(f"\nVýsledná úspěšnost na testovacích datech (OK ({OK_DIGIT}) vs. BAD): {correct}/{total} ({100. * correct / total:.2f}%)")
+    print(f"\nVýsledná úspěšnost na testovacích datech (OK vs. BAD): {correct}/{total} ({100. * correct / total:.2f}%)")
 
 if __name__ == "__main__":
     train(model, train_loader, optimizer, criterion, epochs=3)
