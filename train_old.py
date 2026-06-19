@@ -27,7 +27,8 @@ train_dataset = datasets.MNIST(root='./data', # 'root' určuje cestu, kam se dat
 test_dataset = datasets.MNIST(root='./data',
                               train=False,   # Určuje, že chceme testovací část datasetu.
                               download=True,
-# --- Použití VLISTDataset pro trénovací data ---
+                              transform=transform)
+
 # Vytvoří DataLoader pro trénovací data. DataLoader usnadňuje iteraci přes dataset
 # a automaticky rozděluje data do "dávek" (batchů).
 train_loader = DataLoader(train_dataset,  # Dataset, ze kterého se budou načítat data.
@@ -36,8 +37,7 @@ train_loader = DataLoader(train_dataset,  # Dataset, ze kterého se budou načí
 
 # Vytvoří DataLoader pro testovací data.
 test_loader = DataLoader(test_dataset,
-
-                         batch_size=1000, # Zde můžete nastavit např. batch_size=200 pro celou sadu
+                         batch_size=1000, # Větší dávka pro testování je běžná, protože nepotřebujeme zpětnou propagaci.
                          shuffle=False)   # Testovací data obvykle nemícháme, aby byly výsledky konzistentní.
 # 2. Definice architektury neuronové sítě
 # Každá neuronová síť v PyTorch dědí z nn.Module.
@@ -48,10 +48,11 @@ class CislicovaSit(nn.Module):
 
         # fc1 je první plně propojená (fully connected) vrstva.
         # Vstup: 28x28 pixelů = 784 neuronů (každý pixel je jeden vstupní neuron).
-        self.fc2 = nn.Linear(128, 10)
-
+        # Výstup: 128 neuronů ve skryté vrstvě.
+        self.fc1 = nn.Linear(28 * 28, 128) # nn.Linear je lineární transformace: y = xA^T + b.
 
         # ReLU (Rectified Linear Unit) je aktivační funkce.
+        # Přidává síti nelinearitu, což jí umožňuje učit se složitější vztahy.
         # Bez aktivačních funkcí by síť byla jen posloupností lineárních transformací.
         self.relu = nn.ReLU()
 
@@ -59,9 +60,8 @@ class CislicovaSit(nn.Module):
         # Vstup: 128 neuronů ze skryté vrstvy.
         # Výstup: 10 neuronů (pro 10 tříd: číslice 0-9).
         # Každý z těchto 10 výstupů představuje "skóre" pro danou číslici.
+        self.fc2 = nn.Linear(128, 10)
 
-
-        self.fc2 = nn.Linear(128, 2) # Změněno na 2 výstupní neurony pro binární klasifikaci (OK/BAD)
     # Metoda 'forward' definuje, jak data procházejí sítí.
     # 'x' je vstupní tensor (obrázek nebo dávka obrázků).
     def forward(self, x):
@@ -121,20 +121,20 @@ def test(model, test_loader):
     with torch.no_grad():
         for data, target in test_loader: # Iteruje přes všechny dávky v testovacím DataLoaderu.
             output = model(data) # Dopředný chod - získá predikce sítě pro testovací data.
-    # Vypíše celkovou úspěšnost na testovacích datech.
-    print(f"\nVýsledná úspěšnost na testovacích datech: {correct}/{len(test_loader.dataset)} ({100. * correct / len(test_loader.dataset):.2f}%)")
+            # pred = output.argmax(dim=1, keepdim=True) # Vybere index nejvyšší hodnoty z výstupů sítě.
+                                                    # Tento index odpovídá predikované číslici (0-9).
                                                     # 'dim=1' znamená, že se argmax aplikuje podél dimenze pro třídy.
                                                     # 'keepdim=True' zachová dimenzi výstupu, což je užitečné pro porovnání.
+            pred = output.argmax(dim=1, keepdim=True) # Najde index třídy s nejvyšším skóre pro každou predikci v dávce.
+                                                    # Např. [0.1, 0.8, 0.05, ...] -> 1 (index 1 má nejvyšší skóre).
+            # Porovná predikované číslice s reálnými štítky.
             # 'target.view_as(pred)' zajistí, že mají stejný tvar pro porovnání.
             # '.eq()' provede element-wise porovnání (True, kde se rovnají).
             # '.sum().item()' sečte všechny True hodnoty (převedené na 1) a převede výsledek na Python číslo.
             correct += pred.eq(target.view_as(pred)).sum().item()
 
-
-
-    # Zde se úspěšnost počítá správně, protože test_dataset nyní také obsahuje
-    # binární popisky (0/1) odpovídající tréninku.
-    print(f"\nVýsledná úspěšnost na testovacích datech (OK vs. BAD): {correct}/{len(test_loader.dataset)} ({100. * correct / len(test_loader.dataset):.2f}%)")
+    # Vypíše celkovou úspěšnost na testovacích datech.
+    print(f"\nVýsledná úspěšnost na testovacích datech: {correct}/{len(test_loader.dataset)} ({100. * correct / len(test_loader.dataset):.2f}%)")
 
 # Spuštění celého procesu
 # Toto je standardní Python konstrukce, která zajišťuje, že kód uvnitř bloku
@@ -142,5 +142,3 @@ def test(model, test_loader):
 if __name__ == "__main__":
     train(model, train_loader, optimizer, criterion, epochs=3) # Zavolá trénovací funkci. Model se bude učit 3 epochy.
     test(model, test_loader) # Po tréninku zavolá testovací funkci, aby se vyhodnotila úspěšnost modelu.
-
-
