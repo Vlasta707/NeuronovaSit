@@ -3,15 +3,14 @@ import torch.nn as nn
 import torch.optim as optim
 from torchvision import transforms
 from torch.utils.data import DataLoader
-import numpy as np # Potřebné pro VLISTDataset
-from PIL import Image # Potřebné pro VLISTDataset
+import numpy as np
+from PIL import Image
 
-# --- VLISTDataset pro načítání vlastních dat ---
-# Tato třída načítá vaše obrázky a popisky z .npy souborů.
+# --- 1. Definice Datasetu pro načítání .npy souborů ---
 class VLISTDataset(torch.utils.data.Dataset):
     def __init__(self, image_data_path, label_data_path, transform=None):
-        self.data = np.load(image_data_path) # Načte obrázky
-        self.targets = np.load(label_data_path) # Načte již binární popisky (0/1)
+        self.data = np.load(image_data_path) 
+        self.targets = np.load(label_data_path) 
         self.transform = transform
 
     def __len__(self):
@@ -20,128 +19,98 @@ class VLISTDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         image = self.data[idx]
         label = self.targets[idx]
-        image = Image.fromarray(image, mode='L') # Převede numpy array na PIL Image (grayscale)
+        
+        # Převede numpy array na PIL Image (L = šedotónový)
+        image = Image.fromarray(image, mode='L') 
 
         if self.transform:
             image = self.transform(image)
 
-        # Popisky jsou již binární (0 nebo 1) a jsou typu int64 z numpy, převedeme je na torch.long
         label = torch.tensor(label, dtype=torch.long)
         return image, label
 
-# 1. Nastavení transformací a dat
+# --- 2. Nastavení transformací a DataLoaderů ---
+# POZOR: Musí odpovídat rozměru 256x256 z přípravného skriptu
 transform = transforms.Compose([
-    transforms.ToTensor(), # Převede obrázky na PyTorch Tensor a škáluje [0, 255] na [0.0, 1.0].
-    transforms.Normalize((0.1307,), (0.3081,)) # Normalizace s hodnotami pro MNIST (dobré pro šedotónové obrázky)
+    transforms.ToTensor(),                # Škáluje [0, 255] na [0.0, 1.0]
+    transforms.Normalize((0.5,), (0.5,))  # Standardní normalizace pro šedotónové obrázky
 ])
 
-print("Připravuji VLASTNÍ data (trénovací a testovací VLIST)...")
+print("Načítám připravená data z .npy souborů...")
 
-# --- Použití VLISTDataset pro trénovací data ---
-vlist_train_images_path = './data/vlist_train_images.npy'
-vlist_train_labels_path = './data/vlist_train_labels.npy'
+train_dataset = VLISTDataset(
+    image_data_path='./data/vlist_train_images.npy',
+    label_data_path='./data/vlist_train_labels.npy',
+    transform=transform
+)
 
-train_dataset = VLISTDataset(image_data_path=vlist_train_images_path,
-                             label_data_path=vlist_train_labels_path,
-                             transform=transform)
+test_dataset = VLISTDataset(
+    image_data_path='./data/vlist_test_images.npy',
+    label_data_path='./data/vlist_test_labels.npy',
+    transform=transform
+)
 
-# --- Použití VLISTDataset pro testovací data ---
-vlist_test_images_path = './data/vlist_test_images.npy'
-vlist_test_labels_path = './data/vlist_test_labels.npy'
-
-test_dataset = VLISTDataset(image_data_path=vlist_test_images_path,
-                            label_data_path=vlist_test_labels_path,
-                            transform=transform)
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
 
-train_loader = DataLoader(train_dataset,
-                          batch_size=64,
-                          shuffle=True)
-
-test_loader = DataLoader(test_dataset,
-                         batch_size=200, # Pro 200 testovacích obrázků můžeme otestovat celou sadu najednou
-                         shuffle=False)
-
-# 2. Definice architektury neuronové sítě - CNN
-class CislicovaSit(nn.Module):
+# --- 3. Definice architektury CNN (pro rozměr 256x256) ---
+class PrumyslovaSit(nn.Module):
     def __init__(self):
-        super(CislicovaSit, self).__init__()
+        super(PrumyslovaSit, self).__init__()
+        # 1. konvoluční blok: vstup 1 kanál -> výstup 32 filtrů
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2) # Zmenší rozměr na polovinu
+        
+        # 2. konvoluční blok: vstup 32 filtrů -> výstup 64 filtrů
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
-
-        # Výpočet velikosti vstupu pro fc1 po konvolucích a pooling
-        # Původní MNIST obrázek 28x28
-        # Po conv1 (padding 1) -> 28x28
-        # Po pool (kernel 2, stride 2) -> 14x14
-        # Po conv2 (padding 1) -> 14x14
-        # Po pool (kernel 2, stride 2) -> 7x7
-        # 64 výstupních kanálů z conv2, proto 64 * 7 * 7
-        self.fc1 = nn.Linear(64 * 7 * 7, 128)
-        # Výstupní vrstva pro binární klasifikaci "BAD" (index 0) / "OK" (index 1)
-        self.fc2 = nn.Linear(128, 2)
+        
+        # Výpočet rozměru po dvou MaxPool2d:
+        # Vstup: 256x256 -> po 1. pool: 128x128 -> po 2. pool: 64x64
+        # Výsledný rozměr ploché vrstvy: 64 kanálů * 64 * 64 lineárních vstupů
+        self.fc1 = nn.Linear(64 * 64 * 64, 128)
+        self.fc2 = nn.Linear(128, 2) # Výstup: 2 třídy (index 0 = BAD, index 1 = OK)
         self.relu = nn.ReLU()
 
     def forward(self, x):
         x = self.pool(self.relu(self.conv1(x)))
         x = self.pool(self.relu(self.conv2(x)))
-        x = x.view(x.size(0), -1) # Zploštění
+        x = x.view(x.size(0), -1) # Zploštění (Flatten)
         x = self.relu(self.fc1(x))
         x = self.fc2(x)
         return x
 
-# Inicializace modelu, ztrátové funkce a optimalizátoru.
-model = CislicovaSit()
 
-# Přesun modelu na GPU, pokud je k dispozici
+# --- 4. Inicializace hardwaru, modelu a algoritmů ---
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.to(device)
-print(f"Používám zařízení: {device}")
+model = PrumyslovaSit().to(device)
+print(f"Model byl odeslán na zařízení: {device}")
 
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(model.parameters(),
-                      lr=0.01,
-                      momentum=0.9)
+# Používáme Adam optimalizátor – učí se stabilněji než základní SGD
+optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-# 3. Trénovací cyklus (Training Loop)
-def train(model, train_loader, optimizer, criterion, epochs=3):
-    model.train()
-    print(f"\nSpouštím trénink na {epochs} epoch s vlastními VLIST daty...")
+
+# --- 5. Trénovací cyklus (Training Loop) ---
+def train(model, train_loader, optimizer, criterion, epochs=5):
+    print(f"\nSpouštím trénink na {epochs} epoch...")
+    
     for epoch in range(epochs):
+        model.train()
         running_loss = 0.0
+        
         for batch_idx, (data, target) in enumerate(train_loader):
-            # Popisky 'target' jsou již binární (0 nebo 1) díky create_vlist_data.py
             data, target = data.to(device), target.to(device)
 
-            optimizer.zero_grad()
-            output = model(data)
-            loss = criterion(output, target)
-            loss.backward()
-            optimizer.step()
+            optimizer.zero_grad()   # Vynulování přechozích gradientů
+            output = model(data)    # Dopředný chod (predikce)
+            loss = criterion(output, target) # Výpočet chyby
+            loss.backward()         # Zpětný chod (výpočet parciálních derivací)
+            optimizer.step()        # Aktualizace vah neuronů
 
             running_loss += loss.item()
-            if batch_idx % 20 == 19: # Upravený tisk pro menší trénovací sadu (1000 obrázků)
-                print(f"Epocha: {epoch+1} | Dávka: {batch_idx+1}/{len(train_loader)} | Ztráta (Loss): {running_loss / 20:.4f}")
+            
+            # Vypíše stav každých 5 dávek (vhodné pro menší datasety)
+            if batch_idx % 5 == 4: 
+                print(f"Epocha: {epoch+1}/{epochs} | Dávka: {batch_idx+1}/{len(train_loader)} | Ztráta (Loss): {running_loss / 5:.4f}")
                 running_loss = 0.0
-
-# 4. Testování úspěšnosti sítě
-def test(model, test_loader):
-    model.eval()
-    correct = 0
-    total = 0
-    print("\nVyhodnocuji model na vlastní testovací VLIST sadě (OK vs. BAD)...")
-    with torch.no_grad():
-        for data, target in test_loader:
-            # Popisky 'target' jsou již binární (0 nebo 1) díky create_vlist_test_data.py
-            data, target = data.to(device), target.to(device)
-
-            output = model(data)
-            pred = output.argmax(dim=1, keepdim=True) # Získá predikci: 0 pro "BAD", 1 pro "OK"
-            correct += pred.eq(target.view_as(pred)).sum().item()
-            total += target.size(0)
-
-    print(f"\nVýsledná úspěšnost na testovacích datech (OK vs. BAD): {correct}/{total} ({100. * correct / total:.2f}%)")
-
-if __name__ == "__main__":
-    train(model, train_loader, optimizer, criterion, epochs=3)
-    test(model, test_loader)
