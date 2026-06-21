@@ -114,3 +114,28 @@ def train(model, train_loader, optimizer, criterion, epochs=5):
             if batch_idx % 5 == 4: 
                 print(f"Epocha: {epoch+1}/{epochs} | Dávka: {batch_idx+1}/{len(train_loader)} | Ztráta (Loss): {running_loss / 5:.4f}")
                 running_loss = 0.0
+
+
+# --- 6. Vyhodnocení úspěšnosti (Testing) ---
+def test(model, test_loader):
+    model.eval()
+    correct = 0
+    total = 0
+    print("\nVyhodnocuji model na testovací sadě...")
+    
+    with torch.no_grad(): # Vypne sledování gradientů (ušetří paměť při testu)
+        for data, target in test_loader:
+            data, target = data.to(device), target.to(device)
+
+            output = model(data)
+            pred = output.argmax(dim=1, keepdim=True) # Vybere index s nejvyšší pravděpodobností (0 nebo 1)
+            correct += pred.eq(target.view_as(pred)).sum().item()
+            total += target.size(0)
+
+    print(f"Výsledná úspěšnost: {correct}/{total} ({100. * correct / total:.2f}%)")
+
+
+if __name__ == "__main__":
+    # Spustí trénink na 5 epoch a následně otestuje model
+    train(model, train_loader, optimizer, criterion, epochs=5)
+    test(model, test_loader)
