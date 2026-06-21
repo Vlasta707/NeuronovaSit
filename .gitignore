@@ -1,3 +1,15 @@
-venv/
+# Složka pro syrová data (obrázky, popisky) - NEZAHRNUJEME JI, PROTOŽE MÁ BÝT JEN LOKÁLNÍ
+vlist_data/
+
+# Složka pro zpracovaná data (.npy soubory) - JSOU GENERovaná, NE commitovaná
 data/
+
+# Případné PyTorch modely (pokud je budeš ukládat)
+*.pth
+*.pt
+
+# Virtuální prostředí
+venv/
+.venv/
+env/
 __pycache__/
