@@ -65,16 +65,20 @@ class PrumyslovaSit(nn.Module):
         # 2. konvoluční blok: vstup 32 filtrů -> výstup 64 filtrů
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
         
-        # Výpočet rozměru po dvou MaxPool2d:
-        # Vstup: 256x256 -> po 1. pool: 128x128 -> po 2. pool: 64x64
-        # Výsledný rozměr ploché vrstvy: 64 kanálů * 64 * 64 lineárních vstupů
-        self.fc1 = nn.Linear(64 * 64 * 64, 128)
+        # Výpočet rozměru po TŘECH MaxPool2d:
+        # Vstup: 256x256
+        # -> po 1. pool: 128x128
+        # -> po 2. pool: 64x64
+        # -> po 3. pool: 32x32
+        # Výsledný rozměr ploché vrstvy: 64 kanálů * 32 * 32 lineárních vstupů
+        self.fc1 = nn.Linear(64 * 32 * 32, 128) # Změněno z 64*64*64 na 64*32*32
         self.fc2 = nn.Linear(128, 2) # Výstup: 2 třídy (index 0 = BAD, index 1 = OK)
         self.relu = nn.ReLU()
 
     def forward(self, x):
         x = self.pool(self.relu(self.conv1(x)))
         x = self.pool(self.relu(self.conv2(x)))
+        x = self.pool(x) # Nová pooling vrstva pro další snížení rozměru
         x = x.view(x.size(0), -1) # Zploštění (Flatten)
         x = self.relu(self.fc1(x))
         x = self.fc2(x)
