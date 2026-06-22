@@ -30,6 +30,7 @@ class PrumyslovaSit(nn.Module):
 # --- 2. Nastavení transformací pro vstupní obrázek ---
 # Tyto transformace musí být PŘESNĚ STEJNÉ jako ty použité při tréninku
 transform = transforms.Compose([
+    transforms.Resize((256, 256)),        # Změní velikost obrázku na 256x256
     transforms.ToTensor(),                # Škáluje [0, 255] na [0.0, 1.0]
     transforms.Normalize((0.5,), (0.5,))  # Standardní normalizace pro šedotónové obrázky
 ])
@@ -101,3 +102,4 @@ if __name__ == "__main__":
 
         except Exception as e:
             print(f"Chyba při načítání nebo použití modelu: {e}")
+
