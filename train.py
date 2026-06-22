@@ -140,7 +140,7 @@ def test(model, test_loader):
 
 
 if __name__ == "__main__":
-    # Spustí trénink na 5 epoch a následně otestuje model
-    train(model, train_loader, optimizer, criterion, epochs=5)
+    # Spustí trénink na 20 epoch a následně otestuje model
+    train(model, train_loader, optimizer, criterion, epochs=20) # Změněno z 5 na 20
     test(model, test_loader)
 
