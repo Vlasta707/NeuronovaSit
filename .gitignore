@@ -3,7 +3,7 @@
 vlist_data/**
 
 # Složka pro zpracovaná data (.npy soubory) - JSOU GENERovaná, NE commitovaná
-data/
+data/**
 
 # Případné PyTorch modely (pokud je budeš ukládat)
 *.pth
