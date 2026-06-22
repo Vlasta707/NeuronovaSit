@@ -1,5 +1,6 @@
 # Složka pro syrová data (obrázky, popisky) - NEZAHRNUJEME JI, PROTOŽE MÁ BÝT JEN LOKÁLNÍ
-vlist_data/
+# Vyřaďte adresář "vlist_data/" a všechna jeho obsažená data
+vlist_data/**
 
 # Složka pro zpracovaná data (.npy soubory) - JSOU GENERovaná, NE commitovaná
 data/
