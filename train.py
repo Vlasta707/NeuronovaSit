@@ -146,4 +146,22 @@ if __name__ == "__main__":
     train(model, train_loader, optimizer, criterion, epochs=20) # Změněno z 5 na 20
     test(model, test_loader)
 
+    # --- 7. Uložení natrénovaného modelu s interaktivními dotazy ---
+    save_decision = input("Uložit model? (Ano/Ne): ").lower()
+
+    if save_decision == 'ano' or save_decision == 'y':
+        model_name = input("Zadejte jméno souboru pro model (bez přípony, např. 'muj_prvni_model'): ").strip()
+
+        if model_name:
+            # Zajistíme, že soubor bude mít příponu .pth
+            if not (model_name.endswith('.pth') or model_name.endswith('.pt')):
+                model_name += '.pth'
+
+            model_path = f'./{model_name}'
+            torch.save(model.state_dict(), model_path)
+            print(f"Model byl úspěšně uložen do: {model_path}")
+        else:
+            print("Jméno modelu nebylo zadáno, model nebude uložen.")
+    else:
+        print("Model nebyl uložen.")
 
