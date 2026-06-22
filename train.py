@@ -50,8 +50,8 @@ test_dataset = VLISTDataset(
     transform=transform
 )
 
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
 
 
 # --- 3. Definice architektury CNN (pro rozměr 256x256) ---
@@ -139,3 +139,4 @@ if __name__ == "__main__":
     # Spustí trénink na 5 epoch a následně otestuje model
     train(model, train_loader, optimizer, criterion, epochs=5)
     test(model, test_loader)
+
