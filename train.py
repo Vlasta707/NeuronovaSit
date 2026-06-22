@@ -74,6 +74,7 @@ class PrumyslovaSit(nn.Module):
         self.fc1 = nn.Linear(64 * 32 * 32, 128) # Změněno z 64*64*64 na 64*32*32
         self.fc2 = nn.Linear(128, 2) # Výstup: 2 třídy (index 0 = BAD, index 1 = OK)
         self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.5) # Přidáváme Dropout vrstvu s pravděpodobností 0.5
 
     def forward(self, x):
         x = self.pool(self.relu(self.conv1(x)))
@@ -81,6 +82,7 @@ class PrumyslovaSit(nn.Module):
         x = self.pool(x) # Nová pooling vrstva pro další snížení rozměru
         x = x.view(x.size(0), -1) # Zploštění (Flatten)
         x = self.relu(self.fc1(x))
+        x = self.dropout(x) # Aplikujeme Dropout po ReLU v první plně propojené vrstvě
         x = self.fc2(x)
         return x
 
@@ -143,4 +145,5 @@ if __name__ == "__main__":
     # Spustí trénink na 20 epoch a následně otestuje model
     train(model, train_loader, optimizer, criterion, epochs=20) # Změněno z 5 na 20
     test(model, test_loader)
+
 
