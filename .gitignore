@@ -9,6 +9,9 @@ data/**
 *.pth
 *.pt
 
+# Parametry trénování modelu se na síť necommitují, protože jsou specifické pro lokální prostředí a konfiguraci
+train_config.json
+
 # Virtuální prostředí
 venv/
 .venv/
