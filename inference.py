@@ -3,6 +3,7 @@ import torch.nn as nn
 from torchvision import transforms
 from PIL import Image
 import os # Pro kontrolu existence souborů
+import tkinter as tk
 
 # --- 1. Definice architektury CNN (musí být shodná s tréninkovým modelem) ---
 # Tuto definici jsem zkopíroval z tvého train.py
@@ -87,6 +88,28 @@ if __name__ == "__main__":
             model.load_state_dict(torch.load(model_path, map_location=device))
             print(f"Model '{model_name_input}' byl úspěšně načten.")
 
+            # Vytvoří okno pro výběr modelu
+            root = tk.Tk()
+            label = tk.Label(root, text="Zvol soubor:")
+            label.pack()
+
+            listbox = tk.Listbox(root)
+            for i, file in enumerate(os.listdir()):
+                if file.endswith('.pth') or file.endswith('.pt'):
+                    listbox.insert(i, f"{file} - {i+1}")
+            listbox.pack()
+
+            def select_model():
+                selection_index = int(listbox.curselection()[0])
+                selected_file_name = listbox.get(selection_index).split(" - ")[0]
+                print(f"Zvolený soubor: {selected_file_name}")
+                root.destroy()
+
+            button = tk.Button(root, text="OK", command=select_model)
+            button.pack()
+
+            root.mainloop()
+
             # --- 4.2. Klasifikace obrázku ---
             image_file_path = input("Zadejte plnou cestu k obrázku .png, který chcete klasifikovat: ").strip()
 
@@ -102,4 +125,5 @@ if __name__ == "__main__":
 
         except Exception as e:
             print(f"Chyba při načítání nebo použití modelu: {e}")
+
 
