@@ -1,6 +1,6 @@
 # Import knihovny Matplotlib pro vytváření grafů a zobrazování obrázků
 import matplotlib.pyplot as plt
-from matplotlib.widgets import Button  # Přidán import pro tlačítka
+from matplotlib.widgets import Button
 # Import knihovny NumPy pro práci s numerickými daty, zejména poli (arrays)
 import numpy as np
 # Import os pro práci se souborovým systémem (seznam souborů, cesty)
@@ -40,13 +40,22 @@ class InteractiveGrid:
         self.num_images_to_show = self.num_rows * self.num_cols
         self.target_display_size = (256, 256)
         
-        # Inicializace prvků, které musíme držet v paměti
-        self.fig = None
-        self.btn_next = None
-        self.btn_exit = None
+        # Inicializace grafického okna (Fig) a mřížky sub-grafů (Axes) POUZE JEDNOU při startu
+        self.fig, self.axes = plt.subplots(self.num_rows, self.num_cols, figsize=(13, 13))
+        self.fig.suptitle(f"Náhodné obrázky z '{os.path.basename(IMAGE_SOURCE_DIR.rstrip('/'))}'", fontsize=16)
+        
+        # Skryjeme osy pro všechny sub-grafy hned na začátku
+        for ax in self.axes.flat:
+            ax.axis('off')
+            
+        # Registrace zavíracího eventu pro křížek okna
+        self.fig.canvas.mpl_connect('close_event', self.on_close)
+        
+        # Vytvoření tlačítek pouze jednou na začátku
+        self.create_buttons()
 
     def show_next_batch(self, event=None):
-        """Vybere náhodnou dávku obrázků a překreslí okno."""
+        """Vybere náhodnou dávku obrázků a překreslí okno bez zásahu do rozvržení."""
         images_to_process_count = min(self.num_images_to_show, len(self.all_image_paths))
         random_selected_paths = random.sample(self.all_image_paths, images_to_process_count)
 
@@ -65,33 +74,22 @@ class InteractiveGrid:
             print("Žádné obrázky nebylo možné úspěšně načíst.")
             return
 
-        # Pokud okno ještě neexistuje, vytvoříme ho
-        if self.fig is None or not plt.fignum_exists(self.fig.number):
-            # Zvětšeno na 13x13, aby byl pod mřížkou prostor na tlačítka
-            self.fig, self.axes = plt.subplots(self.num_rows, self.num_cols, figsize=(13, 13))
-            self.fig.suptitle(f"Náhodné obrázky z '{os.path.basename(IMAGE_SOURCE_DIR.rstrip('/'))}'", fontsize=16)
-            
-            # Registrace zavíracího eventu (pokud uživatel zavře okno křížkem)
-            self.fig.canvas.mpl_connect('close_event', self.on_close)
-            
-            # Vytvoření tlačítek (vyrobí se pouze jednou při otevření okna)
-            self.create_buttons()
-
         num_to_display_actual = len(processed_data)
         
-        # Vykreslení/překreslení jednotlivých obrázků v mřížce
+        # Vykreslení/překreslení dat do již existujících os
         for i, ax in enumerate(self.axes.flat):
-            ax.clear()  # Vyčištění starého obsahu sub-grafu
+            ax.clear()  # Vyčistí stará obrazová data v dané sub-ose
+            ax.axis('off') # clear() občas resetuje skrytí os, pro jistotu vypínáme znovu
+            
             if i < num_to_display_actual:
                 img_array, file_name = processed_data[i]
                 ax.imshow(img_array, cmap='gray')
-                # ZVĚTŠENO: font změněn z 6 na 10 pro lepší čitelnost
-                ax.set_title(file_name, fontsize=10) 
-                ax.axis('off')
+                ax.set_title(file_name, fontsize=10) # Větší font (10) zůstává zachován
             else:
-                ax.set_visible(False)
+                # Pokud by došlo k nedostatku obrázků, prázdné sloty úplně vyčistíme
+                ax.imshow(np.zeros(self.target_display_size), cmap='gray')
 
-        # Usazení prvků, rect parametr dává pozor, aby obrázky nezasahovaly do tlačítek dole
+        # tight_layout voláme bezpečně, protože se počet os (Axes) v okně nijak nemění
         plt.tight_layout(rect=[0, 0.08, 1, 0.95])
         self.fig.canvas.draw_idle()
 
@@ -121,17 +119,17 @@ class InteractiveGrid:
         plt.close(self.fig)
 
     def on_close(self, event):
-        """Vyčistí reference, pokud uživatel zavře okno křížkem."""
-        self.fig = None
+        """Vyčistí reference při zavření okna křížkem."""
+        pass
 
 
 if __name__ == "__main__":
     paths = load_all_image_paths()
     
     if paths:
-        # Vytvoření instance interaktivní mřížky
+        # Inicializace objektu mřížky (zde se okno a tlačítka vybudují poprvé a naposledy)
         grid = InteractiveGrid(paths)
-        # Zobrazení první dávky
+        # Načteme do připraveného okna první sadu obrázků
         grid.show_next_batch()
         # Spuštění hlavní smyčky Matplotlibu
         plt.show()
