@@ -120,14 +120,66 @@ if __name__ == "__main__":
         model.load_state_dict(torch.load(model_path, map_location=device))
         print(f"\nModel '{model_name}' byl úspěšně načten.")
 
-        # --- 4.3. Klasifikace obrázku ---
-        image_file_path = input("Zadejte plnou cestu k obrázku .png, který chcete klasifikovat: ").strip()
+        # --- 4.3. Grafický výběr obrázku k klasifikaci ---
+        image_dir = './SyrovaData'
+        selected_image_container = []
 
-        result = classify_image(model, image_file_path, device, transform, class_names)
+        if not os.path.exists(image_dir):
+            messagebox.showerror("Chyba", f"Adresář '{image_dir}' nebyl nalezen. Vytvořte jej a vložte do něj obrázky .png pro klasifikaci.")
+            exit()
+
+        image_root = tk.Tk()
+        image_root.title("Výběr obrázku k klasifikaci")
+        image_root.geometry("400x300")
+
+        image_label = tk.Label(image_root, text=f"Zvolte obrázek .png z adresáře '{image_dir}':", font=("Arial", 10, "bold"))
+        image_label.pack(pady=10)
+
+        image_listbox = tk.Listbox(image_root, width=50, height=10)
+
+        image_files_found = False
+        # Filtrujeme pouze .png soubory z určeného adresáře
+        image_files = [f for f in os.listdir(image_dir) if f.lower().endswith('.png')]
+
+        if image_files:
+            for i, file_name in enumerate(image_files):
+                image_listbox.insert(tk.END, f"{file_name} - {i+1}")
+            image_files_found = True
+        image_listbox.pack(pady=5)
+
+        if not image_files_found:
+            messagebox.showerror("Chyba", f"V adresáři '{image_dir}' nebyly nalezeny žádné obrázky .png!")
+            image_root.destroy()
+            exit()
+
+        def select_image():
+            try:
+                selection_index = image_listbox.curselection()[0]
+                selected_file_name = image_listbox.get(selection_index).split(" - ")[0]
+                # Uložíme celou cestu k obrázku
+                selected_image_container.append(os.path.join(image_dir, selected_file_name))
+                image_root.destroy()
+            except IndexError:
+                messagebox.showwarning("Upozornění", "Musíte nejdříve kliknutím vybrat obrázek ze seznamu!")
+
+        image_button = tk.Button(image_root, text="Klasifikovat vybraný obrázek", command=select_image, bg="#008CBA", fg="white")
+        image_button.pack(pady=10)
+
+        image_root.mainloop()
+
+        # Po zavření okna pro výběr obrázku
+        if not selected_image_container:
+            print("Výběr obrázku byl zrušen. Ukončuji skript.")
+            exit()
+
+        final_image_path = selected_image_container[0] # Získáme finální cestu k obrázku
+
+        # --- 4.4. Spuštění klasifikace ---
+        result = classify_image(model, final_image_path, device, transform, class_names)
 
         if result:
             prediction, confidence = result
-            print(f"\nPredikce pro obrázek '{image_file_path}':")
+            print(f"\nPredikce pro obrázek '{final_image_path}':")
             print(f"Třída: {prediction}")
             print(f"Spolehlivost (Confidence): {confidence:.2f}%")
         else:
