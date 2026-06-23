@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 from PIL import Image
 import json # Přidáno pro práci s JSON
+import os
 
 # --- 1. Definice Datasetu pro načítání .npy souborů ---
 class VLISTDataset(torch.utils.data.Dataset):
@@ -98,6 +99,9 @@ optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 # --- Nastavení parametrů pro trénování ---
 # Pokud jsou nastaveny, použije se jejich hodnota, jinak bude použita defaultní hodnota
+if not os.path.exists('train_config.json'):
+    with open('train_config.json', 'w') as f:
+        json.dump({'epochs': 20, 'lr': 0.001, 'batch_size': 16}, f)
 try:
     with open('train_config.json', 'r') as f:
         config = json.load(f)
@@ -217,4 +221,5 @@ if __name__ == "__main__":
             print("Jméno modelu nebylo zadáno, model nebude uložen.")
     else:
         print("Model nebyl uložen.")
+
 
