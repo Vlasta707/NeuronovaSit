@@ -44,6 +44,10 @@ class InteractiveGrid:
         self.fig, self.axes = plt.subplots(self.num_rows, self.num_cols, figsize=(13, 13))
         self.fig.suptitle(f"Náhodné obrázky z '{os.path.basename(IMAGE_SOURCE_DIR.rstrip('/'))}'", fontsize=16)
         
+        # FIX: Místo tight_layout nastavíme pevné rozestupy oken napevno. 
+        # bottom=0.10 zajistí, že pod mřížkou bude vždy 10 % volného místa pro tlačítka.
+        self.fig.subplots_adjust(left=0.05, right=0.95, top=0.90, bottom=0.10, hspace=0.3, wspace=0.3)
+        
         # Skryjeme osy pro všechny sub-grafy hned na začátku
         for ax in self.axes.flat:
             ax.axis('off')
@@ -79,25 +83,24 @@ class InteractiveGrid:
         # Vykreslení/překreslení dat do již existujících os
         for i, ax in enumerate(self.axes.flat):
             ax.clear()  # Vyčistí stará obrazová data v dané sub-ose
-            ax.axis('off') # clear() občas resetuje skrytí os, pro jistotu vypínáme znovu
+            ax.axis('off') # clear() resetuje skrytí os, vypínáme znovu
             
             if i < num_to_display_actual:
                 img_array, file_name = processed_data[i]
                 ax.imshow(img_array, cmap='gray')
                 ax.set_title(file_name, fontsize=10) # Větší font (10) zůstává zachován
             else:
-                # Pokud by došlo k nedostatku obrázků, prázdné sloty úplně vyčistíme
+                # Pokud by došlo k nedostatku obrázků, prázdné sloty vyčistíme
                 ax.imshow(np.zeros(self.target_display_size), cmap='gray')
 
-        # tight_layout voláme bezpečně, protože se počet os (Axes) v okně nijak nemění
-        plt.tight_layout(rect=[0, 0.08, 1, 0.95])
+        # FIX: Odstraněno plt.tight_layout(), překreslení je nyní stabilní a bez varování
         self.fig.canvas.draw_idle()
 
     def create_buttons(self):
         """Vytvoří interaktivní tlačítka pod mřížkou obrázků."""
-        # [vlevo, dole, šířka, výška] v relativních souřadnicích okna (0 až 1)
-        ax_next = plt.axes([0.30, 0.02, 0.18, 0.04])
-        ax_exit = plt.axes([0.52, 0.02, 0.18, 0.04])
+        # Souřadnice jsou bezpečně pod okrajem mřížky (mřížka končí na dně 0.10, tlačítka jsou na 0.03)
+        ax_next = plt.axes([0.30, 0.03, 0.18, 0.04])
+        ax_exit = plt.axes([0.52, 0.03, 0.18, 0.04])
         
         # Stylování tlačítek
         self.btn_next = Button(ax_next, 'Další matice', color='#008CBA', hovercolor='#007399')
