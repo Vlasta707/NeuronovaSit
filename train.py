@@ -5,6 +5,7 @@ from torchvision import transforms
 from torch.utils.data import DataLoader
 import numpy as np
 from PIL import Image
+import json # Přidáno pro práci s JSON
 
 # --- 1. Definice Datasetu pro načítání .npy souborů ---
 class VLISTDataset(torch.utils.data.Dataset):
@@ -38,20 +39,18 @@ transform = transforms.Compose([
 
 print("Načítám připravená data z .npy souborů...")
 
-train_dataset = VLISTDataset(
-    image_data_path='./data/vlist_train_images.npy',
-    label_data_path='./data/vlist_train_labels.npy',
-    transform=transform
-)
-
-test_dataset = VLISTDataset(
-    image_data_path='./data/vlist_test_images.npy',
-    label_data_path='./data/vlist_test_labels.npy',
-    transform=transform
-)
-
-train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
+# train_dataset = VLISTDataset(
+#     image_data_path='./data/vlist_train_images.npy',
+#     label_data_path='./data/vlist_train_labels.npy',
+#     transform=transform
+# )
+# test_dataset = VLISTDataset(
+#     image_data_path='./data/vlist_test_images.npy',
+#     label_data_path='./data/vlist_test_labels.npy',
+#     transform=transform
+# )
+# train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
+# test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
 
 
 # --- 3. Definice architektury CNN (pro rozměr 256x256) ---
@@ -97,8 +96,62 @@ criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 
+# --- Nastavení parametrů pro trénování ---
+# Pokud jsou nastaveny, použije se jejich hodnota, jinak bude použita defaultní hodnota
+try:
+    with open('train_config.json', 'r') as f:
+        config = json.load(f)
+except FileNotFoundError:
+    config = {
+        'epochs': 20,
+        'lr': 0.001,
+        'batch_size': 16
+    }
+
+def get_param(prompt, default):
+    while True:
+        user_input = input(prompt + f" ({default})? ")
+        if user_input == '':
+            return default
+        try:
+            return float(user_input)
+        except ValueError:
+            print("Neplatná hodnota. Zkuste to znovu.")
+
+epochs = int(get_param('Zadejte počet epoch: ', config['epochs'])) # Cast to int for epochs
+lr = get_param('Zadejte rychlost optimalizace (LR): ', config['lr'])
+batch_size = int(get_param('Zadejte velikost batchu: ', config['batch_size'])) # Cast to int for batch_size
+
+# Uložení konfiguračních parametrů do souboru
+with open('train_config.json', 'w') as f:
+    json.dump({'epochs': epochs, 'lr': lr, 'batch_size': batch_size}, f)
+
+print(f"Nastavení pro trénování:")
+print(f"Epochs: {epochs}")
+print(f"LR: {lr}")
+print(f"Batch size: {batch_size}")
+
+# Update optimizer and dataloaders with new parameters
+optimizer = optim.Adam(model.parameters(), lr=lr)
+
+train_dataset = VLISTDataset(
+    image_data_path='./data/vlist_train_images.npy',
+    label_data_path='./data/vlist_train_labels.npy',
+    transform=transform
+)
+
+test_dataset = VLISTDataset(
+    image_data_path='./data/vlist_test_images.npy',
+    label_data_path='./data/vlist_test_labels.npy',
+    transform=transform
+)
+
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
+
 # --- 5. Trénovací cyklus (Training Loop) ---
-def train(model, train_loader, optimizer, criterion, epochs=5):
+def train(model, train_loader, optimizer, criterion, epochs): # Remove default epochs value
     print(f"\nSpouštím trénink na {epochs} epoch...")
     
     for epoch in range(epochs):
@@ -143,7 +196,7 @@ def test(model, test_loader):
 
 if __name__ == "__main__":
     # Spustí trénink na 20 epoch a následně otestuje model
-    train(model, train_loader, optimizer, criterion, epochs=20) # Změněno z 5 na 20
+    train(model, train_loader, optimizer, criterion, epochs=epochs) # Pass epochs from config/user input
     test(model, test_loader)
 
     # --- 7. Uložení natrénovaného modelu s interaktivními dotazy ---
