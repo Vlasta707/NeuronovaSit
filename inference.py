@@ -121,7 +121,7 @@ if __name__ == "__main__":
         print(f"\nModel '{model_name}' byl úspěšně načten.")
 
         # --- 4.3. Grafický výběr obrázku k klasifikaci ---
-        image_dir = './SyrovaData'
+        image_dir = './syrova_data'
         selected_image_container = []
 
         if not os.path.exists(image_dir):
