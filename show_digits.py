@@ -1,68 +1,91 @@
+show_digits.py
 # Import knihovny Matplotlib pro vytváření grafů a zobrazování obrázků
 import matplotlib.pyplot as plt
 # Import knihovny NumPy pro práci s numerickými daty, zejména poli (arrays)
 import numpy as np
-# Import datové sady MNIST z torchvision, aby byla zachována konzistence s train.py
-from torchvision import datasets
+# Import os pro práci se souborovým systémem (seznam souborů, cesty)
+import os
+# Import Image z knihovny Pillow pro načítání a manipulaci s obrázky
+from PIL import Image
+# Import random pro náhodný výběr souborů
+import random
 
 
-def show_random_digits():
+# Definujte cestu k vašemu adresáři s obrázky
+# Ujistěte se, že tato cesta je správná a adresář existuje
+IMAGE_SOURCE_DIR = '/home/vlastik/NeuronovaSit/syrova_data/'
+# IMAGE_SOURCE_DIR = './syrova_data/' # Alternativně, pokud je adresář v kořeni projektu
+
+def show_random_custom_images():
     """
-    Načte datovou sadu MNIST, vybere náhodné obrázky číslic a zobrazí je v mřížce
-    s příslušnými popisky. Funkce je navržena tak, aby pomohla začátečníkům vizualizovat
-    data, se kterými se běžně pracuje v oblasti strojového učení.
+    Načte náhodné PNG obrázky z předdefinovaného adresáře, zpracuje je
+    a zobrazí v mřížce 10x10 s názvy souborů jako popisky.
     """
-    # Načtení dat MNIST
-    # Použijeme torchvision pro načtení dat, stejně jako v train.py
-    train_dataset = datasets.MNIST(root='./data', train=True, download=True)
-    
-    # Převedeme data na NumPy pole pro snadnější práci v matplotlib
-    x_train = train_dataset.data.numpy()
-    y_train = train_dataset.targets.numpy()
+    num_rows = 10
+    num_cols = 10
+    num_images_to_show = num_rows * num_cols
+    target_display_size = (64, 64) # Cílová velikost pro zobrazení v mřížce (např. 64x64 pixelů)
 
-    # Normalizace pixelových hodnot na rozsah 0-1.
-    # Původní hodnoty pixelů jsou v rozsahu 0-255. Dělením 255.0 je převedeme na float
-    # v rozsahu 0 až 1. Ačkoliv imshow zvládne i 0-255, normalizace je dobrá praxe
-    # pro mnoho modelů strojového učení a někdy může zlepšit vizualizaci.
-    x_train = x_train / 255.0
+    # --- 1. Získání seznamu všech PNG souborů z adresáře ---
+    all_image_paths = []
+    if os.path.exists(IMAGE_SOURCE_DIR):
+        for filename in os.listdir(IMAGE_SOURCE_DIR):
+            if filename.lower().endswith('.png'):
+                all_image_paths.append(os.path.join(IMAGE_SOURCE_DIR, filename))
+    else:
+        print(f"Chyba: Adresář '{IMAGE_SOURCE_DIR}' nebyl nalezen. Zkontrolujte cestu.")
+        return
 
-    # Nastavení velikosti mřížky pro zobrazení obrázků.
-    num_rows = 10 # Počet řádků v mřížce
-    num_cols = 10 # Počet sloupců v mřížce
-    num_images_to_show = num_rows * num_cols # Celkový počet obrázků, které se zobrazí
-    # Vytvoření subplotů (podgrafů) pro zobrazení obrázků.
-    # 'fig' je celý obrázek (okno), 'axes' je pole jednotlivých subplotů.
-    # figsize=(12, 12) nastavuje velikost celého okna na 12x12 palců, což umožní
-    # zobrazit 100 číslic, a přitom zůstat v rozumné velikosti pro monitor.
+    if not all_image_paths:
+        print(f"Chyba: V adresáři '{IMAGE_SOURCE_DIR}' nebyly nalezeny žádné obrázky .png.")
+        return
+
+    # --- 2. Vybrat náhodné obrázky k zobrazení ---
+    # Pokud je méně obrázků než num_images_to_show, vybereme všechny dostupné
+    images_to_process_count = min(num_images_to_show, len(all_image_paths))
+    random_selected_paths = random.sample(all_image_paths, images_to_process_count)
+
+    processed_data = [] # Bude obsahovat tuple (numpy_array_obrazku, nazev_souboru)
+
+    # --- 3. Načtení a předzpracování vybraných obrázků ---
+    for img_path in random_selected_paths:
+        try:
+            # Načte obrázek, převede ho na šedotónový ('L' mode)
+            img = Image.open(img_path).convert('L')
+            # Změní velikost na cílový rozměr pro zobrazení
+            img = img.resize(target_display_size, Image.Resampling.LANCZOS)
+            # Převede na NumPy pole a normalizuje hodnoty pixelů na rozsah 0-1
+            img_array = np.array(img) / 255.0
+            processed_data.append((img_array, os.path.basename(img_path)))
+        except Exception as e:
+            print(f"Varování: Nelze zpracovat obrázek '{os.path.basename(img_path)}': {e}. Bude přeskočen.")
+            continue # Pokračuje na další obrázek
+
+    if not processed_data:
+        print("Žádné obrázky nebylo možné úspěšně načíst a zpracovat pro zobrazení.")
+        return
+
+    # --- 4. Zobrazení obrázků v mřížce ---
+    num_to_display_actual = len(processed_data)
+    if num_to_display_actual < num_images_to_show:
+        print(f"Poznámka: K dispozici je pouze {num_to_display_actual} obrázků. Mřížka nebude zcela zaplněna.")
+
     fig, axes = plt.subplots(num_rows, num_cols, figsize=(12, 12))
-    # Nastavení hlavního nadpisu pro celé okno s obrázky.
-    fig.suptitle("Náhodné obrázky z MNIST s popisky", fontsize=16)
+    fig.suptitle(f"Náhodné obrázky z '{os.path.basename(IMAGE_SOURCE_DIR)}'", fontsize=16)
 
-    # Vybrat náhodné indexy z trénovací sady.
-    # np.random.choice() vybere 'num_images_to_show' unikátních indexů
-    # (protože replace=False) z celkového počtu obrázků v x_train.
-    random_indices = np.random.choice(x_train.shape[0], num_images_to_show, replace=False)
-
-    # Procházení jednotlivých subplotů a zobrazení obrázků.
-    # 'axes.flat' umožňuje iterovat přes všechny subplaty v poli 'axes' jako jednorozměrné pole.
     for i, ax in enumerate(axes.flat):
-        index = random_indices[i] # Získání náhodně vybraného indexu pro aktuální obrázek
-        # Zobrazení obrázku v aktuálním subplotu.
-        # 'cmap='gray'' zajistí, že obrázek bude zobrazen ve stupních šedi,
-        # což je pro MNIST typické.
-        ax.imshow(x_train[index], cmap='gray')
-        # Nastavení titulku subplotu s příslušným popiskem (skutečná číslice).
-        # Zmenšujeme velikost písma na 8, aby se titulky nepřekrývaly u 100 obrázků.
-        ax.set_title(f"{y_train[index]}", fontsize=8)
-        # Vypnutí os (číselných označení) pro čistší zobrazení obrázků.
-        ax.axis('off')
-    # Automatické upravení rozložení subplotů tak, aby se nepřekrývaly.
-    # 'rect' definuje obdélník pro obsah subplotů, aby se udělalo místo pro 'fig.suptitle'.
+        if i < num_to_display_actual:
+            img_array, file_name = processed_data[i]
+            ax.imshow(img_array, cmap='gray')
+            ax.set_title(file_name, fontsize=6) # Titulek bude název souboru
+        else:
+            # Pokud nemáme dostatek obrázků, skryjeme zbývající prázdné subplaty
+            ax.set_visible(False)
+            
+        ax.axis('off') # Vypnutí os pro čistší zobrazení
+
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    # Zobrazení celého grafu (a tedy okna s obrázky).
     plt.show()
 
-# Tato část kódu se spustí pouze tehdy, když je skript spuštěn přímo (ne jako importovaný modul).
 if __name__ == "__main__":
-    show_random_digits() # Volání funkce pro zobrazení náhodných číslic
-
+    show_random_custom_images()
