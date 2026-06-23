@@ -38,7 +38,7 @@ transform = transforms.Compose([
 # --- 3. Funkce pro klasifikaci jednoho obrázku ---
 def classify_image(model, image_path, device, transform, class_names):
     if not os.path.exists(image_path):
-        print(f"Chyba: Soubor obrázku '{image_path}' nebyl nalezen.")
+        print(f"Chyba: Soubor obrázku '{image_path}' nebyl znalezen.")
         return None
 
     try:
@@ -69,7 +69,6 @@ if __name__ == "__main__":
     class_names = {0: "BAD", 1: "OK"}
 
     # Vytvoříme jedno hlavní Tkinter root okno, které ale bude skryté.
-    # Toto okno poskytne potřebný kontext pro PhotoImage a Toplevel okna.
     main_tk_root = tk.Tk()
     main_tk_root.withdraw() # Skryje hlavní okno
 
@@ -77,7 +76,7 @@ if __name__ == "__main__":
     selected_image_container = []
 
     # --- 4.1. Grafický výběr modelu pomocí Tkinter (jako Toplevel okno) ---
-    model_select_window = Toplevel(main_tk_root) # Toplevel je dítětem skrytého main_tk_root
+    model_select_window = Toplevel(main_tk_root)
     model_select_window.title("Výběr modelu sítě")
     model_select_window.geometry("350x250")
 
@@ -87,7 +86,8 @@ if __name__ == "__main__":
     listbox = tk.Listbox(model_select_window, width=40, height=8)
 
     models_found = False
-    for i, file in enumerate(os.listdir()):
+    # ÚPRAVA: Seznam souborů v adresáři se seřadí abecedně
+    for i, file in enumerate(sorted(os.listdir())):
         if file.endswith('.pth') or file.endswith('.pt'):
             listbox.insert(tk.END, f"{file} - {i+1}")
             models_found = True
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     if not models_found:
         messagebox.showerror("Chyba", "V aktuálním adresáři nebyly nalezeny žádné modely (.pth/.pt)!")
         model_select_window.destroy()
-        main_tk_root.destroy() # Zajistíme, že se vše uklidí
+        main_tk_root.destroy()
         exit()
 
     def select_model():
@@ -104,14 +104,13 @@ if __name__ == "__main__":
             selection_index = listbox.curselection()[0]
             selected_file_name = listbox.get(selection_index).split(" - ")[0]
             selected_model_container.append(selected_file_name)
-            model_select_window.destroy() # Zavře toto Toplevel okno
+            model_select_window.destroy()
         except IndexError:
             messagebox.showwarning("Upozornění", "Musíte nejdříve kliknutím vybrat model ze seznamu!")
 
     button = tk.Button(model_select_window, text="Načíst vybraný model", command=select_model, bg="#4CAF50", fg="white")
     button.pack(pady=10)
 
-    # Čekáme, dokud se toto Toplevel okno nezavře
     main_tk_root.wait_window(model_select_window)
 
     # --- 4.2. Načtení zvoleného modelu do PyTorchu ---
@@ -136,7 +135,7 @@ if __name__ == "__main__":
             main_tk_root.destroy()
             exit()
 
-        image_select_window = Toplevel(main_tk_root) # Toplevel je dítětem main_tk_root
+        image_select_window = Toplevel(main_tk_root)
         image_select_window.title("Výběr obrázku k klasifikaci")
         image_select_window.geometry("400x300")
 
@@ -146,7 +145,8 @@ if __name__ == "__main__":
         image_listbox = tk.Listbox(image_select_window, width=50, height=10)
 
         image_files_found = False
-        image_files = [f for f in os.listdir(image_dir) if f.lower().endswith('.png')]
+        # ÚPRAVA (ZDE): Seznam načtených souborů obalen funkcí sorted() pro abecední řazení
+        image_files = sorted([f for f in os.listdir(image_dir) if f.lower().endswith('.png')])
 
         if image_files:
             for i, file_name in enumerate(image_files):
@@ -165,17 +165,15 @@ if __name__ == "__main__":
                 selection_index = image_listbox.curselection()[0]
                 selected_file_name = image_listbox.get(selection_index).split(" - ")[0]
                 selected_image_container.append(os.path.join(image_dir, selected_file_name))
-                image_select_window.destroy() # Zavře toto Toplevel okno
+                image_select_window.destroy()
             except IndexError:
                 messagebox.showwarning("Upozornění", "Musíte nejdříve kliknutím vybrat obrázek ze seznamu!")
 
         image_button = tk.Button(image_select_window, text="Klasifikovat vybraný obrázek", command=select_image, bg="#008CBA", fg="white")
         image_button.pack(pady=10)
 
-        # Čekáme, dokud se toto Toplevel okno nezavře
         main_tk_root.wait_window(image_select_window)
 
-        # Po zavření okna pro výběr obrázku
         if not selected_image_container:
             print("Výběr obrázku byl zrušen. Ukončuji skript.")
             main_tk_root.destroy()
@@ -191,9 +189,9 @@ if __name__ == "__main__":
             max_size = (600, 600)
             img.thumbnail(max_size, Image.Resampling.LANCZOS)
 
-            img_tk = ImageTk.PhotoImage(img) # main_tk_root je stále aktivní pro kontext
+            img_tk = ImageTk.PhotoImage(img)
 
-            image_display_window = Toplevel(main_tk_root) # Parent je main_tk_root
+            image_display_window = Toplevel(main_tk_root)
             image_display_window.title(f"Vybraný obrázek: {os.path.basename(final_image_path)}")
 
             image_display_window.protocol("WM_DELETE_WINDOW", image_display_window.destroy)
@@ -206,14 +204,13 @@ if __name__ == "__main__":
             close_button.pack(pady=5)
 
             image_display_window.update_idletasks()
-            # Centrování okna na obrazovce (protože main_tk_root je skrytý)
             screen_width = main_tk_root.winfo_screenwidth()
             screen_height = main_tk_root.winfo_screenheight()
             x = (screen_width // 2) - (image_display_window.winfo_width() // 2)
             y = (screen_height // 2) - (image_display_window.winfo_height() // 2)
             image_display_window.geometry(f"+{x}+{y}")
 
-            main_tk_root.wait_window(image_display_window) # Čeká na zavření tohoto Toplevel okna
+            main_tk_root.wait_window(image_display_window)
 
         except Exception as e:
             print(f"Chyba při zobrazení obrázku: {e}")
@@ -233,7 +230,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Chyba při načítání nebo použití modelu: {e}")
     finally:
-        # Zajistíme, že se hlavní Tkinter root okno zničí při ukončení skriptu
         if main_tk_root.winfo_exists():
             main_tk_root.destroy()
-
