@@ -20,8 +20,8 @@ def show_random_custom_images():
     Načte náhodné PNG obrázky z předdefinovaného adresáře, zpracuje je
     a zobrazí v mřížce 10x10 s názvy souborů jako popisky.
     """
-    num_rows = 10
-    num_cols = 10
+    num_rows = 4
+    num_cols = 4
     num_images_to_show = num_rows * num_cols
     target_display_size = (64, 64) # Cílová velikost pro zobrazení v mřížce (např. 64x64 pixelů)
 
