@@ -1,4 +1,3 @@
-show_digits.py
 # Import knihovny Matplotlib pro vytváření grafů a zobrazování obrázků
 import matplotlib.pyplot as plt
 # Import knihovny NumPy pro práci s numerickými daty, zejména poli (arrays)
