@@ -23,7 +23,7 @@ def show_random_custom_images():
     num_rows = 4
     num_cols = 4
     num_images_to_show = num_rows * num_cols
-    target_display_size = (64, 64) # Cílová velikost pro zobrazení v mřížce (např. 64x64 pixelů)
+    target_display_size = (256, 256) # Cílová velikost pro zobrazení v mřížce (např. 64x64 pixelů)
 
     # --- 1. Získání seznamu všech PNG souborů z adresáře ---
     all_image_paths = []
