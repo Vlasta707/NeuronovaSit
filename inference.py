@@ -361,38 +361,41 @@ if __name__ == "__main__":
 
         final_image_path = selected_image_container[0]
 
-        # --- Zobrazení vybraného obrázku na obrazovce ---
+# --- Zobrazení vybraného obrázku na obrazovce ---
         print(f"Zobrazení vybraného obrázku: {final_image_path}")
         try:
             img = Image.open(final_image_path)
             max_size = (600, 600)
             img.thumbnail(max_size, Image.Resampling.LANCZOS)
+
+            # Inicializace hlavního viditelného okna pro obrázek
+            display_root = tk.Tk()
+            display_root.title(f"Vybraný obrázek: {os.path.basename(final_image_path)}")
+
+            # Převedení na Tkinter formát musí proběhnout AŽ PO inicializaci display_root
             img_tk = ImageTk.PhotoImage(img)
 
-            display_root = tk.Tk()
-            image_display_window = Toplevel(display_root)
-            display_root.withdraw()
-            image_display_window.title(f"Vybraný obrázek: {os.path.basename(final_image_path)}")
-
-            panel = tk.Label(image_display_window, image=img_tk)
-            panel.image = img_tk
+            # Vložíme obrázek přímo do hlavního okna (ne do Toplevel)
+            panel = tk.Label(display_root, image=img_tk)
+            panel.image = img_tk  # Klíčové: Udržení reference v paměti!
             panel.pack(padx=10, pady=10)
 
             def close_display():
-                image_display_window.destroy()
                 display_root.quit()
+                display_root.destroy()
 
-            close_button = tk.Button(image_display_window, text="Zavřít náhled a pokračovat", command=close_display)
-            close_button.pack(pady=5)
+            close_button = tk.Button(display_root, text="Zavřít náhled a pokračovat", command=close_display, bg="#f44336", fg="white", font=("Arial", 10))
+            close_button.pack(pady=10)
 
-            image_display_window.update_idletasks()
+            # Vycentrování okna na střed obrazovky
+            display_root.update_idletasks()
             screen_width = display_root.winfo_screenwidth()
             screen_height = display_root.winfo_screenheight()
-            x = (screen_width // 2) - (image_display_window.winfo_width() // 2)
-            y = (screen_height // 2) - (image_display_window.winfo_height() // 2)
-            image_display_window.geometry(f"+{x}+{y}")
+            x = (screen_width // 2) - (display_root.winfo_width() // 2)
+            y = (screen_height // 2) - (display_root.winfo_height() // 2)
+            display_root.geometry(f"+{x}+{y}")
 
-            image_display_window.protocol("WM_DELETE_WINDOW", lambda: display_root.destroy())
+            display_root.protocol("WM_DELETE_WINDOW", close_display)
             display_root.mainloop()
 
         except Exception as e:
