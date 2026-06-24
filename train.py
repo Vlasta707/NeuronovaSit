@@ -5,7 +5,7 @@ from torchvision import transforms
 from torch.utils.data import DataLoader
 import numpy as np
 from PIL import Image
-import json # Přidáno pro práci s JSON
+import json
 import os
 
 # --- 1. Definice Datasetu pro načítání .npy souborů ---
@@ -32,7 +32,6 @@ class VLISTDataset(torch.utils.data.Dataset):
         return image, label
 
 # --- 2. Nastavení transformací a DataLoaderů ---
-# POZOR: Musí odpovídat rozměru 256x256 z přípravného skriptu
 transform = transforms.Compose([
     transforms.ToTensor(),                # Škáluje [0, 255] na [0.0, 1.0]
     transforms.Normalize((0.5,), (0.5,))  # Standardní normalizace pro šedotónové obrázky
@@ -40,49 +39,25 @@ transform = transforms.Compose([
 
 print("Načítám připravená data z .npy souborů...")
 
-# train_dataset = VLISTDataset(
-#     image_data_path='./data/vlist_train_images.npy',
-#     label_data_path='./data/vlist_train_labels.npy',
-#     transform=transform
-# )
-# test_dataset = VLISTDataset(
-#     image_data_path='./data/vlist_test_images.npy',
-#     label_data_path='./data/vlist_test_labels.npy',
-#     transform=transform
-# )
-# train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
-# test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
-
-
-# --- 3. Definice architektury CNN (pro rozměr 256x256) ---
+# --- 3. Definice architektury CNN ---
 class PrumyslovaSit(nn.Module):
     def __init__(self):
         super(PrumyslovaSit, self).__init__()
-        # 1. konvoluční blok: vstup 1 kanál -> výstup 32 filtrů
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2) # Zmenší rozměr na polovinu
-        
-        # 2. konvoluční blok: vstup 32 filtrů -> výstup 64 filtrů
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
-        
-        # Výpočet rozměru po TŘECH MaxPool2d:
-        # Vstup: 256x256
-        # -> po 1. pool: 128x128
-        # -> po 2. pool: 64x64
-        # -> po 3. pool: 32x32
-        # Výsledný rozměr ploché vrstvy: 64 kanálů * 32 * 32 lineárních vstupů
-        self.fc1 = nn.Linear(64 * 32 * 32, 128) # Změněno z 64*64*64 na 64*32*32
-        self.fc2 = nn.Linear(128, 2) # Výstup: 2 třídy (index 0 = BAD, index 1 = OK)
+        self.fc1 = nn.Linear(64 * 32 * 32, 128)
+        self.fc2 = nn.Linear(128, 2)
         self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(0.5) # Přidáváme Dropout vrstvu s pravděpodobností 0.5
+        self.dropout = nn.Dropout(0.5)
 
     def forward(self, x):
         x = self.pool(self.relu(self.conv1(x)))
         x = self.pool(self.relu(self.conv2(x)))
-        x = self.pool(x) # Nová pooling vrstva pro další snížení rozměru
-        x = x.view(x.size(0), -1) # Zploštění (Flatten)
+        x = self.pool(x)
+        x = x.view(x.size(0), -1)
         x = self.relu(self.fc1(x))
-        x = self.dropout(x) # Aplikujeme Dropout po ReLU v první plně propojené vrstvě
+        x = self.dropout(x)
         x = self.fc2(x)
         return x
 
@@ -93,12 +68,9 @@ model = PrumyslovaSit().to(device)
 print(f"Model byl odeslán na zařízení: {device}")
 
 criterion = nn.CrossEntropyLoss()
-# Používáme Adam optimalizátor – učí se stabilněji než základní SGD
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-
 # --- Nastavení parametrů pro trénování ---
-# Pokud jsou nastaveny, použije se jejich hodnota, jinak bude použita defaultní hodnota
 if not os.path.exists('train_config.json'):
     with open('train_config.json', 'w') as f:
         json.dump({'epochs': 20, 'lr': 0.001, 'batch_size': 16}, f)
@@ -106,11 +78,7 @@ try:
     with open('train_config.json', 'r') as f:
         config = json.load(f)
 except FileNotFoundError:
-    config = {
-        'epochs': 20,
-        'lr': 0.001,
-        'batch_size': 16
-    }
+    config = {'epochs': 20, 'lr': 0.001, 'batch_size': 16}
 
 def get_param(prompt, default):
     while True:
@@ -122,41 +90,31 @@ def get_param(prompt, default):
         except ValueError:
             print("Neplatná hodnota. Zkuste to znovu.")
 
-epochs = int(get_param('Zadejte počet epoch: ', config['epochs'])) # Cast to int for epochs
+epochs = int(get_param('Zadejte počet epoch: ', config['epochs']))
 lr = get_param('Zadejte rychlost optimalizace (LR): ', config['lr'])
-batch_size = int(get_param('Zadejte velikost batchu: ', config['batch_size'])) # Cast to int for batch_size
+batch_size = int(get_param('Zadejte velikost batchu: ', config['batch_size']))
 
-# Uložení konfiguračních parametrů do souboru
 with open('train_config.json', 'w') as f:
     json.dump({'epochs': epochs, 'lr': lr, 'batch_size': batch_size}, f)
 
-print(f"Nastavení pro trénování:")
+print(f"\nNastavení pro trénování:")
 print(f"Epochs: {epochs}")
 print(f"LR: {lr}")
 print(f"Batch size: {batch_size}")
 
-# Update optimizer and dataloaders with new parameters
 optimizer = optim.Adam(model.parameters(), lr=lr)
 
-train_dataset = VLISTDataset(
-    image_data_path='./data/vlist_train_images.npy',
-    label_data_path='./data/vlist_train_labels.npy',
-    transform=transform
-)
-
-test_dataset = VLISTDataset(
-    image_data_path='./data/vlist_test_images.npy',
-    label_data_path='./data/vlist_test_labels.npy',
-    transform=transform
-)
+train_dataset = VLISTDataset(image_data_path='./data/vlist_train_images.npy', label_data_path='./data/vlist_train_labels.npy', transform=transform)
+test_dataset = VLISTDataset(image_data_path='./data/vlist_test_images.npy', label_data_path='./data/vlist_test_labels.npy', transform=transform)
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
 
 # --- 5. Trénovací cyklus (Training Loop) ---
-def train(model, train_loader, optimizer, criterion, epochs): # Remove default epochs value
+def train(model, train_loader, optimizer, criterion, epochs):
     print(f"\nSpouštím trénink na {epochs} epoch...")
+    loss_history = [] # Zde budeme ukládat záznamy o ztrátě
     
     for epoch in range(epochs):
         model.train()
@@ -165,18 +123,28 @@ def train(model, train_loader, optimizer, criterion, epochs): # Remove default e
         for batch_idx, (data, target) in enumerate(train_loader):
             data, target = data.to(device), target.to(device)
 
-            optimizer.zero_grad()   # Vynulování přechozích gradientů
-            output = model(data)    # Dopředný chod (predikce)
-            loss = criterion(output, target) # Výpočet chyby
-            loss.backward()         # Zpětný chod (výpočet parciálních derivací)
-            optimizer.step()        # Aktualizace vah neuronů
+            optimizer.zero_grad()
+            output = model(data)
+            loss = criterion(output, target)
+            loss.backward()
+            optimizer.step()
 
             running_loss += loss.item()
             
-            # Vypíše stav každých 5 dávek (vhodné pro menší datasety)
             if batch_idx % 5 == 4: 
-                print(f"Epocha: {epoch+1}/{epochs} | Dávka: {batch_idx+1}/{len(train_loader)} | Ztráta (Loss): {running_loss / 5:.4f}")
+                current_loss = running_loss / 5
+                print(f"Epocha: {epoch+1}/{epochs} | Dávka: {batch_idx+1}/{len(train_loader)} | Ztráta (Loss): {current_loss:.4f}")
+                
+                # Uložíme si data pro pozdější export do Markdownu
+                loss_history.append({
+                    'epoch': epoch + 1,
+                    'batch': batch_idx + 1,
+                    'total_batches': len(train_loader),
+                    'loss': current_loss
+                })
                 running_loss = 0.0
+                
+    return loss_history
 
 
 # --- 6. Vyhodnocení úspěšnosti (Testing) ---
@@ -186,40 +154,84 @@ def test(model, test_loader):
     total = 0
     print("\nVyhodnocuji model na testovací sadě...")
     
-    with torch.no_grad(): # Vypne sledování gradientů (ušetří paměť při testu)
+    with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
 
             output = model(data)
-            pred = output.argmax(dim=1, keepdim=True) # Vybere index s nejvyšší pravděpodobností (0 nebo 1)
+            pred = output.argmax(dim=1, keepdim=True)
             correct += pred.eq(target.view_as(pred)).sum().item()
             total += target.size(0)
 
-    print(f"Výsledná úspěšnost: {correct}/{total} ({100. * correct / total:.2f}%)")
+    accuracy = 100. * correct / total
+    print(f"Výsledná úspěšnost: {correct}/{total} ({accuracy:.2f}%)")
+    
+    return accuracy, correct, total
 
 
 if __name__ == "__main__":
-    # Spustí trénink na 20 epoch a následně otestuje model
-    train(model, train_loader, optimizer, criterion, epochs=epochs) # Pass epochs from config/user input
-    test(model, test_loader)
+    # Spustíme trénink a zachytíme historii ztrát
+    loss_history = train(model, train_loader, optimizer, criterion, epochs=epochs)
+    accuracy, correct, total = test(model, test_loader)
 
-    # --- 7. Uložení natrénovaného modelu s interaktivními dotazy ---
-    save_decision = input("Uložit model? (Ano/Ne): ").lower()
+    # --- 7. Uložení natrénovaného modelu a statistik do Markdownu ---
+    save_decision = input("\nUložit model? (Ano/Ne): ").lower()
 
-    if save_decision == 'ano' or save_decision == 'y':
+    if save_decision in ['ano', 'y']:
         model_name = input("Zadejte jméno souboru pro model (bez přípony, např. 'muj_prvni_model'): ").strip()
 
         if model_name:
-            # Zajistíme, že soubor bude mít příponu .pth
-            if not (model_name.endswith('.pth') or model_name.endswith('.pt')):
-                model_name += '.pth'
+            if model_name.endswith('.pth') or model_name.endswith('.pt'):
+                base_name = os.path.splitext(model_name)[0]
+            else:
+                base_name = model_name
 
-            model_path = f'./{model_name}'
+            model_filename = f"{base_name}.pth"
+            md_filename = f"{base_name}.md"
+
+            # 1. Uložení .pth modelu
+            model_path = f'./{model_filename}'
             torch.save(model.state_dict(), model_path)
             print(f"Model byl úspěšně uložen do: {model_path}")
+
+            # 2. Příprava tabulky historie ztrát (Loss History) v Markdownu
+            loss_table_rows = []
+            for record in loss_history:
+                loss_table_rows.append(
+                    f"| {record['epoch']}/{epochs} | {record['batch']}/{record['total_batches']} | {record['loss']:.4f} |"
+                )
+            loss_table_content = "\n".join(loss_table_rows)
+
+            # 3. Sestavení celkového Markdown dokumentu
+            md_path = f'./{md_filename}'
+            
+            markdown_content = f"""# Vyhodnocení tréninku modelu: {base_name}
+
+### Trénovací parametry
+| Parametr | Hodnota |
+| :--- | :--- |
+| **Počet epoch** | {epochs} |
+| **Learning Rate (LR)** | {lr} |
+| **Batch Size** | {batch_size} |
+| **Použité zařízení** | {device} |
+
+### Výsledky testování
+| Metrika | Hodnota |
+| :--- | :--- |
+| **Celková úspěšnost** | **{accuracy:.2f} %** |
+| **Správně klasifikováno** | {correct} z {total} |
+
+### Průběh trénování (Historie ztrát)
+| Epocha | Dávka (Batch) | Ztráta (Loss) |
+| :--- | :--- | :--- |
+{loss_table_content}
+"""
+            
+            with open(md_path, 'w', encoding='utf-8') as md_file:
+                md_file.write(markdown_content)
+            print(f"Statistiky a historie ztrát byly úspěšně uloženy do: {md_path}")
+
         else:
             print("Jméno modelu nebylo zadáno, model nebude uložen.")
     else:
         print("Model nebyl uložen.")
-
-
