@@ -143,7 +143,7 @@ if __name__ == "__main__":
 
     class_names = {0: "BAD", 1: "OK"}
 
-    # Vytvoříme hlavní skrytý root
+    # JEDINÝ ROOT PRO CELÝ SKRIPT - bude řídit celou aplikaci
     main_tk_root = tk.Tk()
     main_tk_root.withdraw()
 
@@ -224,7 +224,7 @@ if __name__ == "__main__":
         def on_confirm():
             selected_model_container.append(model_filename)
             details_window.destroy()
-            main_tk_root.quit()  # KLÍČOVÁ OPRAVA: Vyskočí z mainloopu a pustí kód dál
+            main_tk_root.quit()  # Ukončí první mainloop
             
         def on_back():
             details_window.destroy()
@@ -236,7 +236,6 @@ if __name__ == "__main__":
         btn_back = tk.Button(btn_frame, text="Zpět na volbu modelu", command=on_back, bg="#f44336", fg="white", font=("Arial", 10), padx=10, pady=5)
         btn_back.pack(side=tk.LEFT, padx=20)
         
-        # Bezpečné ukončení při zavření křížkem
         details_window.protocol("WM_DELETE_WINDOW", lambda: main_tk_root.destroy())
 
 
@@ -297,6 +296,7 @@ if __name__ == "__main__":
     # --- 4.2. Načtení zvoleného modelu do PyTorchu ---
     if not selected_model_container:
         print("Výběr modelu byl zrušen. Ukončuji skript.")
+        main_tk_root.destroy()
         exit()
 
     model_name = selected_model_container[0]
@@ -312,22 +312,18 @@ if __name__ == "__main__":
         image_dir = './syrova_data'
 
         if not os.path.exists(image_dir):
-            # Pro vyskakování chyb za mainloopem musíme krátce inicializovat lokální prvek
-            temp_root = tk.Tk()
-            temp_root.withdraw()
             messagebox.showerror("Chyba", f"Adresář '{image_dir}' nebyl nalezen. Vytvořte jej a vložte do něj obrázky .png pro klasifikaci.")
+            main_tk_root.destroy()
             exit()
 
         image_files = sorted([f for f in os.listdir(image_dir) if f.lower().endswith('.png')])
         if not image_files:
-            temp_root = tk.Tk()
-            temp_root.withdraw()
             messagebox.showerror("Chyba", f"V adresáři '{image_dir}' nebyly nalezeny žádné obrázky .png!")
+            main_tk_root.destroy()
             exit()
 
-        image_root = tk.Tk()
-        image_select_window = Toplevel(image_root)
-        image_root.withdraw()
+        # Otevíráme okno výběru obrázku jako Toplevel nad společným main_tk_root
+        image_select_window = Toplevel(main_tk_root)
         image_select_window.title("Výběr obrázku k klasifikaci")
         image_select_window.geometry("400x300")
 
@@ -345,61 +341,62 @@ if __name__ == "__main__":
                 selected_file_name = image_files[selection_index]
                 selected_image_container.append(os.path.join(image_dir, selected_file_name))
                 image_select_window.destroy()
-                image_root.quit()
+                main_tk_root.quit()  # Ukončí druhý mainloop
             except IndexError:
                 messagebox.showwarning("Upozornění", "Musíte nejdříve kliknutím vybrat obrázek ze seznamu!")
 
         image_button = tk.Button(image_select_window, text="Klasifikovat vybraný obrázek", command=select_image, bg="#008CBA", fg="white")
         image_button.pack(pady=10)
 
-        image_select_window.protocol("WM_DELETE_WINDOW", lambda: image_root.destroy())
-        image_root.mainloop()
+        image_select_window.protocol("WM_DELETE_WINDOW", lambda: main_tk_root.destroy())
+        main_tk_root.mainloop()
 
         if not selected_image_container:
             print("Výběr obrázku byl zrušen. Ukončuji skript.")
+            main_tk_root.destroy()
             exit()
 
         final_image_path = selected_image_container[0]
 
-# --- Zobrazení vybraného obrázku na obrazovce ---
+        # --- Zobrazení vybraného obrázku na obrazovce ---
         print(f"Zobrazení vybraného obrázku: {final_image_path}")
         try:
             img = Image.open(final_image_path)
             max_size = (600, 600)
             img.thumbnail(max_size, Image.Resampling.LANCZOS)
 
-            # Inicializace hlavního viditelného okna pro obrázek
-            display_root = tk.Tk()
-            display_root.title(f"Vybraný obrázek: {os.path.basename(final_image_path)}")
+            # Okno náhledu jako Toplevel - teď už Tkinter bezpečně ví, kam image "pyimage" patří!
+            image_display_window = Toplevel(main_tk_root)
+            image_display_window.title(f"Vybraný obrázek: {os.path.basename(final_image_path)}")
 
-            # Převedení na Tkinter formát musí proběhnout AŽ PO inicializaci display_root
             img_tk = ImageTk.PhotoImage(img)
 
-            # Vložíme obrázek přímo do hlavního okna (ne do Toplevel)
-            panel = tk.Label(display_root, image=img_tk)
-            panel.image = img_tk  # Klíčové: Udržení reference v paměti!
+            panel = tk.Label(image_display_window, image=img_tk)
+            panel.image = img_tk  
             panel.pack(padx=10, pady=10)
 
             def close_display():
-                display_root.quit()
-                display_root.destroy()
+                image_display_window.destroy()
+                main_tk_root.quit()  # Ukončí třetí mainloop
 
-            close_button = tk.Button(display_root, text="Zavřít náhled a pokračovat", command=close_display, bg="#f44336", fg="white", font=("Arial", 10))
+            close_button = tk.Button(image_display_window, text="Zavřít náhled a pokračovat", command=close_display, bg="#f44336", fg="white", font=("Arial", 10))
             close_button.pack(pady=10)
 
-            # Vycentrování okna na střed obrazovky
-            display_root.update_idletasks()
-            screen_width = display_root.winfo_screenwidth()
-            screen_height = display_root.winfo_screenheight()
-            x = (screen_width // 2) - (display_root.winfo_width() // 2)
-            y = (screen_height // 2) - (display_root.winfo_height() // 2)
-            display_root.geometry(f"+{x}+{y}")
+            image_display_window.update_idletasks()
+            screen_width = main_tk_root.winfo_screenwidth()
+            screen_height = main_tk_root.winfo_screenheight()
+            x = (screen_width // 2) - (image_display_window.winfo_width() // 2)
+            y = (screen_height // 2) - (image_display_window.winfo_height() // 2)
+            image_display_window.geometry(f"+{x}+{y}")
 
-            display_root.protocol("WM_DELETE_WINDOW", close_display)
-            display_root.mainloop()
+            image_display_window.protocol("WM_DELETE_WINDOW", close_display)
+            main_tk_root.mainloop()
 
         except Exception as e:
             print(f"Chyba při zobrazení obrázku: {e}")
+
+        # Úklid hlavního root okna z paměti před samotným výpisem klasifikace
+        main_tk_root.destroy()
 
         # --- 4.4. Spuštění klasifikace ---
         result = classify_image(model, final_image_path, device, transform, class_names)
@@ -414,3 +411,7 @@ if __name__ == "__main__":
 
     except Exception as e:
         print(f"Chyba při načítání nebo použití modelu: {e}")
+        try:
+            main_tk_root.destroy()
+        except:
+            pass
