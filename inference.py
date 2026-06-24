@@ -107,7 +107,6 @@ def parse_md_file(md_path):
         with open(md_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
 
-        reading_table = False
         for line in lines:
             # Extrakce dat pro graf z tabulky historie ztrát
             if "|" in line:
@@ -116,13 +115,12 @@ def parse_md_file(md_path):
                 parts = [p.strip() for p in line.split("|") if p.strip()]
                 if len(parts) >= 3:
                     try:
-                        # parts[0] = "1/20", parts[1] = "5/50", parts[2] = "0.6912"
                         loss_val = float(parts[2])
                         losses.append(loss_val)
                     except ValueError:
                         pass
             
-            # Formátování textu pro zobrazení (očištění od ošklivých tabulkových znaků)
+            # Formátování textu pro zobrazení (očištění od tabulkových znaků)
             if line.startswith("#"):
                 text_info += line.replace("#", "").strip() + "\n" + "="*30 + "\n"
             elif "|" in line:
@@ -145,6 +143,7 @@ if __name__ == "__main__":
 
     class_names = {0: "BAD", 1: "OK"}
 
+    # Vytvoříme hlavní skrytý root
     main_tk_root = tk.Tk()
     main_tk_root.withdraw()
 
@@ -173,17 +172,19 @@ if __name__ == "__main__":
         
         details_window = Toplevel(main_tk_root)
         details_window.title(f"Detail modelu: {model_filename}")
-        details_window.geometry("850x500")
         
-        # Rozdělení okna na levou (text) a pravou (graf) část
+        # Flexibilní velikost okna podle přítomnosti dat pro graf
+        if loss_data:
+            details_window.geometry("850x500")
+        else:
+            details_window.geometry("450x500")
+        
+        # Hlavní rozřazovací rámec
         main_frame = tk.Frame(details_window)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         left_frame = tk.Frame(main_frame, width=350)
         left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
-        right_frame = tk.Frame(main_frame, width=450)
-        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         
         # Levá část: Textové info z MD
         lbl_info = tk.Label(left_frame, text="Statistiky trénování modelu:", font=("Arial", 10, "bold"))
@@ -194,17 +195,20 @@ if __name__ == "__main__":
         
         text_area = tk.Text(left_frame, wrap=tk.WORD, yscrollcommand=txt_scroll.set, font=("Consolas", 9))
         text_area.insert(tk.END, text_info)
-        text_area.config(state=tk.DISABLED) # Pouze pro čtení
+        text_area.config(state=tk.DISABLED)
         text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         txt_scroll.config(command=text_area.yview)
         
-        # Pravá část: Matplotlib Graf ztráty
+        # Pravá část: Matplotlib Graf ztráty (pouze pokud máme data)
         if loss_data:
+            right_frame = tk.Frame(main_frame, width=450)
+            right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(10, 0))
+            
             fig = Figure(figsize=(5, 4), dpi=100)
             ax = fig.add_subplot(111)
             ax.plot(loss_data, marker='.', color='#FF5722', label='Loss')
             ax.set_title("Průběh Ztráty (Loss History)")
-            ax.set_xlabel("Měřící body (každých 5 dávek)")
+            ax.set_xlabel("Průběh trénování (záznamy chyb)")
             ax.set_ylabel("Ztráta")
             ax.grid(True, linestyle='--', alpha=0.6)
             ax.legend()
@@ -212,9 +216,6 @@ if __name__ == "__main__":
             canvas = FigureCanvasTkAgg(fig, master=right_frame)
             canvas.draw()
             canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-        else:
-            lbl_no_graph = tk.Label(right_frame, text="Graf nelze vykreslit (chybí data o ztrátě).", fg="red", font=("Arial", 10))
-            lbl_no_graph.pack(expand=True)
             
         # Spodní část: Tlačítka akcí
         btn_frame = tk.Frame(details_window)
@@ -223,10 +224,11 @@ if __name__ == "__main__":
         def on_confirm():
             selected_model_container.append(model_filename)
             details_window.destroy()
+            main_tk_root.quit()  # KLÍČOVÁ OPRAVA: Vyskočí z mainloopu a pustí kód dál
             
         def on_back():
             details_window.destroy()
-            open_model_selection_window() # Návrat na hlavní rozcestník
+            open_model_selection_window()
             
         btn_confirm = tk.Button(btn_frame, text="Skutečně ponechat tento model", command=on_confirm, bg="#4CAF50", fg="white", font=("Arial", 10, "bold"), padx=10, pady=5)
         btn_confirm.pack(side=tk.RIGHT, padx=20)
@@ -234,8 +236,9 @@ if __name__ == "__main__":
         btn_back = tk.Button(btn_frame, text="Zpět na volbu modelu", command=on_back, bg="#f44336", fg="white", font=("Arial", 10), padx=10, pady=5)
         btn_back.pack(side=tk.LEFT, padx=20)
         
-        # Pokud uživatel zavře okno křížkem, ukončíme aplikaci čistě
+        # Bezpečné ukončení při zavření křížkem
         details_window.protocol("WM_DELETE_WINDOW", lambda: main_tk_root.destroy())
+
 
     # --- 4.1. Grafický rozcestník výběru modelu ---
     def open_model_selection_window():
@@ -251,7 +254,6 @@ if __name__ == "__main__":
             listbox.insert(tk.END, f"{file} - {i+1}")
         listbox.pack(pady=5)
 
-        # Automatický výběr naposledy použitého
         if last_used_model_filename and last_used_model_filename in model_filenames_in_listbox:
             idx = model_filenames_in_listbox.index(last_used_model_filename)
             listbox.selection_set(idx)
@@ -283,7 +285,8 @@ if __name__ == "__main__":
             
         model_select_window.protocol("WM_DELETE_WINDOW", lambda: main_tk_root.destroy())
 
-    # Prvotní spuštění workflow: Pokud existuje předchozí model, skočíme rovnou na jeho detaily, jinak otevíráme listbox
+
+    # Prvotní start logiky
     if last_used_model_filename and last_used_model_filename in model_filenames_in_listbox:
         show_model_details_and_confirm(last_used_model_filename)
     else:
@@ -309,15 +312,22 @@ if __name__ == "__main__":
         image_dir = './syrova_data'
 
         if not os.path.exists(image_dir):
-            main_tk_root = tk.Tk()
-            main_tk_root.withdraw()
+            # Pro vyskakování chyb za mainloopem musíme krátce inicializovat lokální prvek
+            temp_root = tk.Tk()
+            temp_root.withdraw()
             messagebox.showerror("Chyba", f"Adresář '{image_dir}' nebyl nalezen. Vytvořte jej a vložte do něj obrázky .png pro klasifikaci.")
             exit()
 
-        main_tk_root = tk.Tk()
-        main_tk_root.withdraw()
-        
-        image_select_window = Toplevel(main_tk_root)
+        image_files = sorted([f for f in os.listdir(image_dir) if f.lower().endswith('.png')])
+        if not image_files:
+            temp_root = tk.Tk()
+            temp_root.withdraw()
+            messagebox.showerror("Chyba", f"V adresáři '{image_dir}' nebyly nalezeny žádné obrázky .png!")
+            exit()
+
+        image_root = tk.Tk()
+        image_select_window = Toplevel(image_root)
+        image_root.withdraw()
         image_select_window.title("Výběr obrázku k klasifikaci")
         image_select_window.geometry("400x300")
 
@@ -325,15 +335,8 @@ if __name__ == "__main__":
         image_label.pack(pady=10)
 
         image_listbox = tk.Listbox(image_select_window, width=50, height=10)
-        image_files = sorted([f for f in os.listdir(image_dir) if f.lower().endswith('.png')])
-
-        if image_files:
-            for i, file_name in enumerate(image_files):
-                image_listbox.insert(tk.END, f"{file_name} - {i+1}")
-        else:
-            messagebox.showerror("Chyba", f"V adresáři '{image_dir}' nebyly nalezeny žádné obrázky .png!")
-            exit()
-            
+        for i, file_name in enumerate(image_files):
+            image_listbox.insert(tk.END, f"{file_name} - {i+1}")
         image_listbox.pack(pady=5)
 
         def select_image():
@@ -342,13 +345,15 @@ if __name__ == "__main__":
                 selected_file_name = image_files[selection_index]
                 selected_image_container.append(os.path.join(image_dir, selected_file_name))
                 image_select_window.destroy()
+                image_root.quit()
             except IndexError:
                 messagebox.showwarning("Upozornění", "Musíte nejdříve kliknutím vybrat obrázek ze seznamu!")
 
         image_button = tk.Button(image_select_window, text="Klasifikovat vybraný obrázek", command=select_image, bg="#008CBA", fg="white")
         image_button.pack(pady=10)
 
-        main_tk_root.wait_window(image_select_window)
+        image_select_window.protocol("WM_DELETE_WINDOW", lambda: image_root.destroy())
+        image_root.mainloop()
 
         if not selected_image_container:
             print("Výběr obrázku byl zrušen. Ukončuji skript.")
@@ -364,24 +369,31 @@ if __name__ == "__main__":
             img.thumbnail(max_size, Image.Resampling.LANCZOS)
             img_tk = ImageTk.PhotoImage(img)
 
-            image_display_window = Toplevel(main_tk_root)
+            display_root = tk.Tk()
+            image_display_window = Toplevel(display_root)
+            display_root.withdraw()
             image_display_window.title(f"Vybraný obrázek: {os.path.basename(final_image_path)}")
 
             panel = tk.Label(image_display_window, image=img_tk)
             panel.image = img_tk
             panel.pack(padx=10, pady=10)
 
-            close_button = tk.Button(image_display_window, text="Zavřít náhled a pokračovat", command=image_display_window.destroy)
+            def close_display():
+                image_display_window.destroy()
+                display_root.quit()
+
+            close_button = tk.Button(image_display_window, text="Zavřít náhled a pokračovat", command=close_display)
             close_button.pack(pady=5)
 
             image_display_window.update_idletasks()
-            screen_width = main_tk_root.winfo_screenwidth()
-            screen_height = main_tk_root.winfo_screenheight()
+            screen_width = display_root.winfo_screenwidth()
+            screen_height = display_root.winfo_screenheight()
             x = (screen_width // 2) - (image_display_window.winfo_width() // 2)
             y = (screen_height // 2) - (image_display_window.winfo_height() // 2)
             image_display_window.geometry(f"+{x}+{y}")
 
-            main_tk_root.wait_window(image_display_window)
+            image_display_window.protocol("WM_DELETE_WINDOW", lambda: display_root.destroy())
+            display_root.mainloop()
 
         except Exception as e:
             print(f"Chyba při zobrazení obrázku: {e}")
@@ -399,8 +411,3 @@ if __name__ == "__main__":
 
     except Exception as e:
         print(f"Chyba při načítání nebo použití modelu: {e}")
-    finally:
-        try:
-            main_tk_root.destroy()
-        except:
-            pass
