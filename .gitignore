@@ -1,26 +1,40 @@
-# Složka pro syrová data (obrázky, popisky) - NEZAHRNUJEME JI, PROTOŽE MÁ BÝT JEN LOKÁLNÍ
-# Vyřaďte adresář "vlist_data/" a všechna jeho obsažená data
-vlist_data/**
-syrova_data/**
+# ==============================================================================
+# 1. DATA A STRUKTURY (Lokální a generované soubory)
+# ==============================================================================
+# Syrová lokální data
+vlist_data/
+syrova_data/
 
-# Složka pro zpracovaná data (.npy soubory) - JSOU GENERovaná, NE commitovaná
-data/**
+# Zpracovaná data (.npy soubory)
+data/
 
-# Případné PyTorch modely (pokud je budeš ukládat)
+# ==============================================================================
+# 2. VÝSTUPY MODELŮ A KONFIGURACE
+# ==============================================================================
+# PyTorch modely (velké binární soubory)
 *.pth
 *.pt
 
-# Konfigurační soubor posledního modelu (je zde pouze pro pohodlí uživatele, nebude zálohován v GITu)
+# Lokální konfigurační soubory a logy
 last_model.txt
-
-# Adresáře konfigurace aplikace (je zde pouze pro pohodlí uživatele, nebude zálohován v GITu)
+train_config.json
 .prumyslova_sit_app/
 
-# Parametry trénování modelu se na síť necommitují, protože jsou specifické pro lokální prostředí a konfiguraci
-train_config.json
-
+# ==============================================================================
+# 3. VÝVOJOVÉ PROSTŘEDÍ A SYSTÉM (Python standard)
+# ==============================================================================
 # Virtuální prostředí
 venv/
 .venv/
 env/
+
+# Python cache
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Vývojářské nástroje (volitelné, např. VS Code / Jupyter)
+.vscode/
+.idea/
+.ipynb_checkpoints/
