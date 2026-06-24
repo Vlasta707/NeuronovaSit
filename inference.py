@@ -4,26 +4,25 @@ from torchvision import transforms
 from PIL import Image, ImageTk
 import os
 import tkinter as tk
-from tkinter import messagebox, Toplevel
+from tkinter import messagebox, Toplevel, ttk
+
+# Importy pro vykreslování grafů v Tkinteru
+import matplotlib
+matplotlib.use("TkAgg")
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
 
 # --- Konfigurační cesty pro uložení posledního modelu ---
-# Konfigurační soubor bude uložen v domovském adresáři uživatele.
 CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".prumyslova_sit_app")
 LAST_MODEL_FILE = os.path.join(CONFIG_DIR, "last_model.txt")
-
-# Adresář, kde se nacházejí tvé modely.
-# Podle tvého skriptu se modely hledají v aktuálním adresáři.
-MODELS_DIR = "." # "." znamená aktuální adresář
+MODELS_DIR = "." 
 
 # --- Funkce pro persistenci cesty k modelu ---
 def load_last_model_path():
-    """Načte cestu k naposledy použitému modelu z konfiguračního souboru."""
     if os.path.exists(LAST_MODEL_FILE):
         try:
             with open(LAST_MODEL_FILE, 'r') as f:
                 path = f.read().strip()
-                # Zkontrolujeme, zda cesta k modelu stále existuje
-                # a zda je ve stejném adresáři jako tento skript (pokud MODELS_DIR je '.')
                 if os.path.exists(path) and os.path.dirname(path) == MODELS_DIR:
                     return path
         except Exception as e:
@@ -31,8 +30,7 @@ def load_last_model_path():
     return None
 
 def save_last_model_path(path):
-    """Uloží cestu k aktuálně použitému modelu do konfiguračního souboru."""
-    os.makedirs(CONFIG_DIR, exist_ok=True) # Zajistí, že adresář existuje
+    os.makedirs(CONFIG_DIR, exist_ok=True)
     try:
         with open(LAST_MODEL_FILE, 'w') as f:
             f.write(path)
@@ -40,15 +38,15 @@ def save_last_model_path(path):
         print(f"Chyba při ukládání cesty k předchozímu modelu: {e}")
 
 
-# --- 1. Definice architektury CNN (musí být shodná s tréninkovým modelem) ---
+# --- 1. Definice architektury CNN ---
 class PrumyslovaSit(nn.Module):
     def __init__(self):
         super(PrumyslovaSit, self).__init__()
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
-        self.fc1 = nn.Linear(64 * 32 * 32, 128) # Po třech poolech
-        self.fc2 = nn.Linear(128, 2) # Výstup: 2 třídy (0 = BAD, 1 = OK)
+        self.fc1 = nn.Linear(64 * 32 * 32, 128)
+        self.fc2 = nn.Linear(128, 2)
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(0.5)
 
@@ -95,6 +93,51 @@ def classify_image(model, image_path, device, transform, class_names):
 
     return prediction, confidence
 
+
+# --- Pomocné funkce pro načítání dat z .md souboru ---
+def parse_md_file(md_path):
+    """Přečte .md soubor, vytáhne textový popis a data pro graf ztráty."""
+    text_info = ""
+    losses = []
+    
+    if not os.path.exists(md_path):
+        return "K tomuto modelu nebyl nalezen .md soubor s vyhodnocením.", []
+
+    try:
+        with open(md_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+
+        reading_table = False
+        for line in lines:
+            # Extrakce dat pro graf z tabulky historie ztrát
+            if "|" in line:
+                if "Epocha" in line or "---" in line:
+                    continue
+                parts = [p.strip() for p in line.split("|") if p.strip()]
+                if len(parts) >= 3:
+                    try:
+                        # parts[0] = "1/20", parts[1] = "5/50", parts[2] = "0.6912"
+                        loss_val = float(parts[2])
+                        losses.append(loss_val)
+                    except ValueError:
+                        pass
+            
+            # Formátování textu pro zobrazení (očištění od ošklivých tabulkových znaků)
+            if line.startswith("#"):
+                text_info += line.replace("#", "").strip() + "\n" + "="*30 + "\n"
+            elif "|" in line:
+                if "---" in line: continue
+                parts = [p.strip() for p in line.split("|") if p.strip()]
+                text_info += "  ".join(parts).replace("**", "") + "\n"
+            else:
+                text_info += line.replace("**", "")
+                
+    except Exception as e:
+        text_info = f"Chyba při čtení statistik: {e}"
+        
+    return text_info, losses
+
+
 # --- 4. Hlavní část skriptu ---
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -108,115 +151,172 @@ if __name__ == "__main__":
     selected_model_container = []
     selected_image_container = []
 
-    # Načteme naposledy použitý model z konfigurace
     last_used_model_path = load_last_model_path()
-    # Získáme pouze název souboru pro zobrazení
     last_used_model_filename = os.path.basename(last_used_model_path) if last_used_model_path else None
 
-    # --- 4.1. Grafický výběr modelu pomocí Tkinter (jako Toplevel okno) ---
-    model_select_window = Toplevel(main_tk_root)
-    model_select_window.title("Výběr modelu sítě")
-    model_select_window.geometry("350x300") # Zvětšeno pro nové tlačítko
+    # Získání seznamu modelů v adresáři
+    model_filenames_in_listbox = sorted([f for f in os.listdir(MODELS_DIR) if f.endswith('.pth') or f.endswith('.pt')])
 
-    label = tk.Label(model_select_window, text="Zvolte soubor natrénovaného modelu:", font=("Arial", 10, "bold"))
-    label.pack(pady=10)
-
-    listbox = tk.Listbox(model_select_window, width=40, height=8)
-    model_filenames_in_listbox = [] # Ukládáme si názvy souborů pro snadnou kontrolu existence
-
-    models_found = False
-    # Procházíme soubory v MODELS_DIR (aktuálním adresáři)
-    for i, file in enumerate(sorted(os.listdir(MODELS_DIR))):
-        if file.endswith('.pth') or file.endswith('.pt'):
-            listbox.insert(tk.END, f"{file} - {i+1}")
-            model_filenames_in_listbox.append(file)
-            models_found = True
-    listbox.pack(pady=5)
-
-    if not models_found:
+    if not model_filenames_in_listbox:
         messagebox.showerror("Chyba", f"V adresáři '{MODELS_DIR}' nebyly nalezeny žádné modely (.pth/.pt)!")
-        model_select_window.destroy()
         main_tk_root.destroy()
         exit()
 
-    # Automaticky vybrat a zvýraznit naposledy použitý model, pokud existuje a je dostupný
-    if last_used_model_filename and last_used_model_filename in model_filenames_in_listbox:
-        try:
-            index_to_select = -1
-            for i, item_text in enumerate(listbox.get(0, tk.END)):
-                if item_text.startswith(last_used_model_filename):
-                    index_to_select = i
-                    break
-            if index_to_select != -1:
-                listbox.selection_set(index_to_select) # Zvýrazní položku
-                listbox.activate(index_to_select)     # Nastaví ji jako aktivní
-                listbox.see(index_to_select)          # Roluje na ní, pokud není viditelná
-        except Exception as e:
-            print(f"Chyba při automatickém výběru předchozího modelu: {e}")
-
-    # Funkce pro výběr modelu, která může být volána buď z listboxu nebo z tlačítka "Načíst předchozí"
-    def select_model(use_last_model_flag=False):
-        model_to_select_filename = None
-        if use_last_model_flag and last_used_model_filename and last_used_model_filename in model_filenames_in_listbox:
-            # Pokud je voláno tlačítkem "Načíst předchozí" a model je dostupný
-            model_to_select_filename = last_used_model_filename
-            print(f"Vybírám předchozí model: {model_to_select_filename}")
+    # Funkce pro zobrazení okna s grafem a detaily
+    def show_model_details_and_confirm(model_filename):
+        base_name = os.path.splitext(model_filename)[0]
+        md_filename = f"{base_name}.md"
+        md_path = os.path.join(MODELS_DIR, md_filename)
+        
+        # Načtení dat z markdownu
+        text_info, loss_data = parse_md_file(md_path)
+        
+        details_window = Toplevel(main_tk_root)
+        details_window.title(f"Detail modelu: {model_filename}")
+        details_window.geometry("850x500")
+        
+        # Rozdělení okna na levou (text) a pravou (graf) část
+        main_frame = tk.Frame(details_window)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        left_frame = tk.Frame(main_frame, width=350)
+        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        right_frame = tk.Frame(main_frame, width=450)
+        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+        
+        # Levá část: Textové info z MD
+        lbl_info = tk.Label(left_frame, text="Statistiky trénování modelu:", font=("Arial", 10, "bold"))
+        lbl_info.pack(anchor="w")
+        
+        txt_scroll = tk.Scrollbar(left_frame)
+        txt_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        text_area = tk.Text(left_frame, wrap=tk.WORD, yscrollcommand=txt_scroll.set, font=("Consolas", 9))
+        text_area.insert(tk.END, text_info)
+        text_area.config(state=tk.DISABLED) # Pouze pro čtení
+        text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        txt_scroll.config(command=text_area.yview)
+        
+        # Pravá část: Matplotlib Graf ztráty
+        if loss_data:
+            fig = Figure(figsize=(5, 4), dpi=100)
+            ax = fig.add_subplot(111)
+            ax.plot(loss_data, marker='.', color='#FF5722', label='Loss')
+            ax.set_title("Průběh Ztráty (Loss History)")
+            ax.set_xlabel("Měřící body (každých 5 dávek)")
+            ax.set_ylabel("Ztráta")
+            ax.grid(True, linestyle='--', alpha=0.6)
+            ax.legend()
+            
+            canvas = FigureCanvasTkAgg(fig, master=right_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         else:
-            # Jinak se pokusíme vybrat z listboxu
-            try:
-                selection_index = listbox.curselection()[0]
-                model_to_select_filename = listbox.get(selection_index).split(" - ")[0]
-                print(f"Vybírám model z listboxu: {model_to_select_filename}")
-            except IndexError:
-                messagebox.showwarning("Upozornění", "Musíte nejdříve kliknutím vybrat model ze seznamu!")
-                return
+            lbl_no_graph = tk.Label(right_frame, text="Graf nelze vykreslit (chybí data o ztrátě).", fg="red", font=("Arial", 10))
+            lbl_no_graph.pack(expand=True)
+            
+        # Spodní část: Tlačítka akcí
+        btn_frame = tk.Frame(details_window)
+        btn_frame.pack(fill=tk.X, pady=10)
+        
+        def on_confirm():
+            selected_model_container.append(model_filename)
+            details_window.destroy()
+            
+        def on_back():
+            details_window.destroy()
+            open_model_selection_window() # Návrat na hlavní rozcestník
+            
+        btn_confirm = tk.Button(btn_frame, text="Skutečně ponechat tento model", command=on_confirm, bg="#4CAF50", fg="white", font=("Arial", 10, "bold"), padx=10, pady=5)
+        btn_confirm.pack(side=tk.RIGHT, padx=20)
+        
+        btn_back = tk.Button(btn_frame, text="Zpět na volbu modelu", command=on_back, bg="#f44336", fg="white", font=("Arial", 10), padx=10, pady=5)
+        btn_back.pack(side=tk.LEFT, padx=20)
+        
+        # Pokud uživatel zavře okno křížkem, ukončíme aplikaci čistě
+        details_window.protocol("WM_DELETE_WINDOW", lambda: main_tk_root.destroy())
 
-        if model_to_select_filename:
-            selected_model_container.append(model_to_select_filename)
+    # --- 4.1. Grafický rozcestník výběru modelu ---
+    def open_model_selection_window():
+        model_select_window = Toplevel(main_tk_root)
+        model_select_window.title("Výběr modelu sítě")
+        model_select_window.geometry("380x320")
+
+        label = tk.Label(model_select_window, text="Zvolte soubor natrénovaného modelu:", font=("Arial", 10, "bold"))
+        label.pack(pady=10)
+
+        listbox = tk.Listbox(model_select_window, width=45, height=8)
+        for i, file in enumerate(model_filenames_in_listbox):
+            listbox.insert(tk.END, f"{file} - {i+1}")
+        listbox.pack(pady=5)
+
+        # Automatický výběr naposledy použitého
+        if last_used_model_filename and last_used_model_filename in model_filenames_in_listbox:
+            idx = model_filenames_in_listbox.index(last_used_model_filename)
+            listbox.selection_set(idx)
+            listbox.activate(idx)
+
+        def proceed_with_selection(use_last):
+            if use_last:
+                chosen = last_used_model_filename
+            else:
+                try:
+                    selection_index = listbox.curselection()[0]
+                    chosen = model_filenames_in_listbox[selection_index]
+                except IndexError:
+                    messagebox.showwarning("Upozornění", "Musíte nejdříve kliknutím vybrat model ze seznamu!")
+                    return
+            
             model_select_window.destroy()
+            show_model_details_and_confirm(chosen)
 
-    # Tlačítko pro načtení vybraného modelu z listboxu
-    button = tk.Button(model_select_window, text="Načíst vybraný model", command=lambda: select_model(False), bg="#4CAF50", fg="white")
-    button.pack(pady=10)
+        button = tk.Button(model_select_window, text="Zobrazit detaily vybraného modelu", command=lambda: proceed_with_selection(False), bg="#008CBA", fg="white")
+        button.pack(pady=10)
 
-    # Nové tlačítko pro výběr naposledy použitého modelu
+        if last_used_model_filename and last_used_model_filename in model_filenames_in_listbox:
+            default_button = tk.Button(
+                model_select_window, text=f"Zobrazit předchozí: {last_used_model_filename}",
+                command=lambda: proceed_with_selection(True), bg="#e7e7e7", fg="black"
+            )
+            default_button.pack(pady=5)
+            
+        model_select_window.protocol("WM_DELETE_WINDOW", lambda: main_tk_root.destroy())
+
+    # Prvotní spuštění workflow: Pokud existuje předchozí model, skočíme rovnou na jeho detaily, jinak otevíráme listbox
     if last_used_model_filename and last_used_model_filename in model_filenames_in_listbox:
-        default_button_text = f"Načíst předchozí: {last_used_model_filename}"
-        default_button = tk.Button(
-            model_select_window, text=default_button_text,
-            command=lambda: select_model(True), # Voláme select_model s příznakem pro použití předchozího
-            bg="#008CBA", fg="white" # Modrá barva pro odlišení
-        )
-        default_button.pack(pady=5)
+        show_model_details_and_confirm(last_used_model_filename)
     else:
-        # Zobrazíme zprávu, pokud předchozí model není k dispozici
-        tk.Label(model_select_window, text="Žádný předchozí model není k dispozici.").pack(pady=5)
+        open_model_selection_window()
 
-    main_tk_root.wait_window(model_select_window)
+    main_tk_root.mainloop()
 
     # --- 4.2. Načtení zvoleného modelu do PyTorchu ---
     if not selected_model_container:
         print("Výběr modelu byl zrušen. Ukončuji skript.")
-        main_tk_root.destroy()
         exit()
 
     model_name = selected_model_container[0]
-    model_path = os.path.join(MODELS_DIR, model_name) # Sestavíme plnou cestu k modelu
+    model_path = os.path.join(MODELS_DIR, model_name)
 
     model = PrumyslovaSit().to(device)
     try:
         model.load_state_dict(torch.load(model_path, map_location=device))
         print(f"\nModel '{model_name}' byl úspěšně načten.")
-        save_last_model_path(model_path) # Uložíme cestu k právě načtenému modelu jako poslední
+        save_last_model_path(model_path)
 
-        # --- 4.3. Grafický výběr obrázku k klasifikaci (jako Toplevel okno) ---
+        # --- 4.3. Grafický výběr obrázku k klasifikaci ---
         image_dir = './syrova_data'
 
         if not os.path.exists(image_dir):
+            main_tk_root = tk.Tk()
+            main_tk_root.withdraw()
             messagebox.showerror("Chyba", f"Adresář '{image_dir}' nebyl nalezen. Vytvořte jej a vložte do něj obrázky .png pro klasifikaci.")
-            main_tk_root.destroy()
             exit()
 
+        main_tk_root = tk.Tk()
+        main_tk_root.withdraw()
+        
         image_select_window = Toplevel(main_tk_root)
         image_select_window.title("Výběr obrázku k klasifikaci")
         image_select_window.geometry("400x300")
@@ -225,26 +325,21 @@ if __name__ == "__main__":
         image_label.pack(pady=10)
 
         image_listbox = tk.Listbox(image_select_window, width=50, height=10)
-
-        image_files_found = False
         image_files = sorted([f for f in os.listdir(image_dir) if f.lower().endswith('.png')])
 
         if image_files:
             for i, file_name in enumerate(image_files):
                 image_listbox.insert(tk.END, f"{file_name} - {i+1}")
-            image_files_found = True
-        image_listbox.pack(pady=5)
-
-        if not image_files_found:
+        else:
             messagebox.showerror("Chyba", f"V adresáři '{image_dir}' nebyly nalezeny žádné obrázky .png!")
-            image_select_window.destroy()
-            main_tk_root.destroy()
             exit()
+            
+        image_listbox.pack(pady=5)
 
         def select_image():
             try:
                 selection_index = image_listbox.curselection()[0]
-                selected_file_name = image_listbox.get(selection_index).split(" - ")[0]
+                selected_file_name = image_files[selection_index]
                 selected_image_container.append(os.path.join(image_dir, selected_file_name))
                 image_select_window.destroy()
             except IndexError:
@@ -257,7 +352,6 @@ if __name__ == "__main__":
 
         if not selected_image_container:
             print("Výběr obrázku byl zrušen. Ukončuji skript.")
-            main_tk_root.destroy()
             exit()
 
         final_image_path = selected_image_container[0]
@@ -266,16 +360,12 @@ if __name__ == "__main__":
         print(f"Zobrazení vybraného obrázku: {final_image_path}")
         try:
             img = Image.open(final_image_path)
-
             max_size = (600, 600)
             img.thumbnail(max_size, Image.Resampling.LANCZOS)
-
             img_tk = ImageTk.PhotoImage(img)
 
             image_display_window = Toplevel(main_tk_root)
             image_display_window.title(f"Vybraný obrázek: {os.path.basename(final_image_path)}")
-
-            image_display_window.protocol("WM_DELETE_WINDOW", image_display_window.destroy)
 
             panel = tk.Label(image_display_window, image=img_tk)
             panel.image = img_tk
@@ -295,7 +385,6 @@ if __name__ == "__main__":
 
         except Exception as e:
             print(f"Chyba při zobrazení obrázku: {e}")
-            messagebox.showerror("Chyba zobrazení", f"Nepodařilo se zobrazit obrázek: {e}")
 
         # --- 4.4. Spuštění klasifikace ---
         result = classify_image(model, final_image_path, device, transform, class_names)
@@ -309,7 +398,9 @@ if __name__ == "__main__":
             print("Klasifikace obrázku selhala.")
 
     except Exception as e:
-        print(f"Chyba při načítání nebo použití  modelu: {e}")
+        print(f"Chyba při načítání nebo použití modelu: {e}")
     finally:
-        if main_tk_root.winfo_exists():
+        try:
             main_tk_root.destroy()
+        except:
+            pass
