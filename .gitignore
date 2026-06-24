@@ -15,6 +15,9 @@ data/
 *.pth
 *.pt
 
+# Výstupní reporty z trénování
+*.md
+
 # Lokální konfigurační soubory a logy
 last_model.txt
 train_config.json
