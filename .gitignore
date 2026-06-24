@@ -10,6 +10,12 @@ data/**
 *.pth
 *.pt
 
+# Konfigurační soubor posledního modelu (je zde pouze pro pohodlí uživatele, nebude zálohován v GITu)
+last_model.txt
+
+# Adresáře konfigurace aplikace (je zde pouze pro pohodlí uživatele, nebude zálohován v GITu)
+.prumyslova_sit_app/
+
 # Parametry trénování modelu se na síť necommitují, protože jsou specifické pro lokální prostředí a konfiguraci
 train_config.json
 
