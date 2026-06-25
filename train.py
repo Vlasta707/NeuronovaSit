@@ -82,38 +82,86 @@ print(f"Model byl odeslán na zařízení: {device}")
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-# --- Nastavení parametrů pro trénování ---
+# --- Nastavení parametrů pro trénování
 if not os.path.exists('train_config.json'):
     with open('train_config.json', 'w') as f:
-        json.dump({'epochs': 20, 'lr': 0.001, 'batch_size': 16}, f)
+        json.dump({'epochs': 20, 'lr': 0.001, 'batch_size': 16, 'use_aug': 'a', 'rot': 8, 'h_flip': 0.5, 'v_flip': 0.5, 'cj': 0.1}, f)
 try:
     with open('train_config.json', 'r') as f:
         config = json.load(f)
-except FileNotFoundError:
-    config = {'epochs': 20, 'lr': 0.001, 'batch_size': 16}
+except Exception:
+    config = {'epochs': 20, 'lr': 0.001, 'batch_size': 16, 'use_aug': 'a', 'rot': 8, 'h_flip': 0.5, 'v_flip': 0.5, 'cj': 0.1}
 
-def get_param(prompt, default):
+# Pomocná funkce pro bezpečné načítání z konzole
+def get_param(prompt, default, is_int=False, is_text=False):
     while True:
-        user_input = input(prompt + f" ({default})? ")
+        user_input = input(prompt + f" ({default})? ").strip()
         if user_input == '':
             return default
+        if is_text:
+            return user_input.lower()
         try:
-            return float(user_input)
+            return int(user_input) if is_int else float(user_input)
         except ValueError:
             print("Neplatná hodnota. Zkuste to znovu.")
 
-epochs = int(get_param('Zadejte počet epoch: ', config['epochs']))
-lr = get_param('Zadejte rychlost optimalizace (LR): ', config['lr'])
-batch_size = int(get_param('Zadejte velikost batchu: ', config['batch_size']))
+# --- INTAREKTIVNÍ PROMPTY (NAČÍTÁNÍ) ---
+print("\n--- Nastavení parametrů trénování ---")
+epochs = int(get_param('Zadejte počet epoch', config.get('epochs', 20), is_int=True))
+lr = get_param('Zadejte rychlost optimalizace (LR)', config.get('lr', 0.001))
+batch_size = int(get_param('Zadejte velikost batchu', config.get('batch_size', 16), is_int=True))
 
+print("\n--- Nastavení Data Augmentace ---")
+use_aug = get_param('Chcete použít Data Augmentaci? (A/N)', config.get('use_aug', 'a'), is_text=True)
+use_augmentation = use_aug != 'n'
+
+# Inicializace výchozích hodnot pro případ, že je augmentace vypnutá
+rot, h_flip, v_flip, cj_bright, cj_contrast = 0, 0.0, 0.0, 0.0, 0.0
+
+if use_augmentation:
+    rot = int(get_param('  Zadejte max. úhel rotace ve stupních', config.get('rot', 8), is_int=True))
+    h_flip = get_param('  Pravděpodobnost horizontálního překlopení (0.0 - 1.0)', config.get('h_flip', 0.5))
+    v_flip = get_param('  Pravděpodobnost vertikálního překlopení (0.0 - 1.0)', config.get('v_flip', 0.5))
+    cj_val = get_param('  Intenzita ColorJitter jasu/kontrastu (0.0 - 1.0)', config.get('cj', 0.1))
+    cj_bright = cj_contrast = cj_val
+
+# --- ULOŽENÍ AKTUÁLNÍ KONFIGURACE PRO PŘÍŠTĚ ---
 with open('train_config.json', 'w') as f:
-    json.dump({'epochs': epochs, 'lr': lr, 'batch_size': batch_size}, f)
+    json.dump({
+        'epochs': epochs, 'lr': lr, 'batch_size': batch_size, 
+        'use_aug': 'a' if use_augmentation else 'n', 
+        'rot': rot, 'h_flip': h_flip, 'v_flip': v_flip, 'cj': cj_bright
+    }, f)
 
-print(f"\nNastavení pro trénování:")
-print(f"Epochs: {epochs}")
-print(f"LR: {lr}")
-print(f"Batch size: {batch_size}")
+# --- DEFINICE TRANSFORMAČNÍCH PIPELINES ---
+train_transform_list = []
+if use_augmentation:
+    if rot > 0: train_transform_list.append(transforms.RandomRotation(rot))
+    if h_flip > 0: train_transform_list_and = train_transform_list.append(transforms.RandomHorizontalFlip(p=h_flip))
+    if v_flip > 0: train_transform_list.append(transforms.RandomVerticalFlip(p=v_flip))
+    if cj_bright > 0: train_transform_list.append(transforms.ColorJitter(brightness=cj_bright, contrast=cj_contrast))
 
+train_transform_list.append(transforms.ToTensor())
+train_transform_list.append(transforms.Normalize((0.5,), (0.5,)))
+
+train_transform = transforms.Compose(train_transform_list)
+test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
+
+# --- REKAPITULACE V KONZOLI ---
+print("\n" + "="*40)
+print("Konfigurace spuštění:")
+print(f"  Epochy: {epochs}")
+print(f"  Learning Rate: {lr}")
+print(f"  Velikost batchu: {batch_size}")
+print(f"  Augmentace dat: {'ZAPNUTA' if use_augmentation else 'VYPNUTA'}")
+if use_augmentation:
+    print(f"    - Max rotace: {rot}°")
+    print(f"    - Horiz. flip (p): {h_flip}")
+    print(f"    - Vert. flip (p): {v_flip}")
+    print(f"    - ColorJitter (b/c): {cj_bright}")
+print("="*40 + "\n")
+
+# --- KONEČNÁ ČÁST SKRIPTU ---
 optimizer = optim.Adam(model.parameters(), lr=lr)
 
 train_dataset = VLISTDataset(image_data_path='./data/vlist_train_images.npy', label_data_path='./data/vlist_train_labels.npy', transform=train_transform)
