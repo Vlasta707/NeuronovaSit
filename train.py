@@ -32,9 +32,21 @@ class VLISTDataset(torch.utils.data.Dataset):
         return image, label
 
 # --- 2. Nastavení transformací a DataLoaderů ---
-transform = transforms.Compose([
-    transforms.ToTensor(),                # Škáluje [0, 255] na [0.0, 1.0]
-    transforms.Normalize((0.5,), (0.5,))  # Standardní normalizace pro šedotónové obrázky
+
+# Augmentace pro TRÉNOVÁNÍ (probíhá dynamicky v paměti)
+train_transform = transforms.Compose([
+    transforms.RandomRotation(10),               # Náhodná rotace o max trochu tam a zpět (-10° až +10°)
+    transforms.RandomHorizontalFlip(p=0.5),      # Překlopení vodorovně s pravděpodobností 50 %
+    transforms.RandomVerticalFlip(p=0.5),        # Překlopení svisle (ideální pro kruhová dna)
+    transforms.ColorJitter(brightness=0.2, contrast=0.2), # Náhodná změna jasu a kontrastu
+    transforms.ToTensor(),                       # Škáluje [0, 255] na [0.0, 1.0]
+    transforms.Normalize((0.5,), (0.5,))         # Standardní normalizace
+])
+
+# ČISTÁ transformace pro TESTOVÁNÍ (žádná augmentace!)
+test_transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize((0.5,), (0.5,))
 ])
 
 print("Načítám připravená data z .npy souborů...")
@@ -104,8 +116,8 @@ print(f"Batch size: {batch_size}")
 
 optimizer = optim.Adam(model.parameters(), lr=lr)
 
-train_dataset = VLISTDataset(image_data_path='./data/vlist_train_images.npy', label_data_path='./data/vlist_train_labels.npy', transform=transform)
-test_dataset = VLISTDataset(image_data_path='./data/vlist_test_images.npy', label_data_path='./data/vlist_test_labels.npy', transform=transform)
+train_dataset = VLISTDataset(image_data_path='./data/vlist_train_images.npy', label_data_path='./data/vlist_train_labels.npy', transform=train_transform)
+test_dataset = VLISTDataset(image_data_path='./data/vlist_test_images.npy', label_data_path='./data/vlist_test_labels.npy', transform=test_transform)
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
