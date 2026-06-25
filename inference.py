@@ -247,7 +247,7 @@ if __name__ == "__main__":
             details_window.destroy()
             open_model_selection_window()
             
-        btn_confirm = tk.Button(btn_frame, text="Skutečně ponechat tento model", command=on_confirm, bg="#4CAF50", fg="white", font=("Arial", 10, "bold"), padx=10, pady=5)
+        btn_confirm = tk.Button(btn_frame, text="Ponechat tento model", command=on_confirm, bg="#4CAF50", fg="white", font=("Arial", 10, "bold"), padx=10, pady=5)
         btn_confirm.pack(side=tk.RIGHT, padx=20)
         
         btn_back = tk.Button(btn_frame, text="Zpět na volbu modelu", command=on_back, bg="#f44336", fg="white", font=("Arial", 10), padx=10, pady=5)
