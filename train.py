@@ -189,8 +189,12 @@ if __name__ == "__main__":
             model_filename = f"{base_name}.pth"
             md_filename = f"{base_name}.md"
 
-            # 1. Uložení .pth modelu
-            model_path = f'./{model_filename}'
+            # Zajištění existence podadresáře "moje_modely" vzhledem k aktuálnímu adresáři
+            output_dir = './moje_modely'
+            os.makedirs(output_dir, exist_ok=True)
+
+            # 1. Uložení .pth modelu do podadresáře
+            model_path = os.path.join(output_dir, model_filename)
             torch.save(model.state_dict(), model_path)
             print(f"Model byl úspěšně uložen do: {model_path}")
 
@@ -202,8 +206,8 @@ if __name__ == "__main__":
                 )
             loss_table_content = "\n".join(loss_table_rows)
 
-            # 3. Sestavení celkového Markdown dokumentu
-            md_path = f'./{md_filename}'
+            # 3. Sestavení celkového Markdown dokumentu a uložení do podadresáře
+            md_path = os.path.join(output_dir, md_filename)
             
             markdown_content = f"""# Vyhodnocení tréninku modelu: {base_name}
 
