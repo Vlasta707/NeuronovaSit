@@ -15,7 +15,12 @@ from matplotlib.figure import Figure
 # --- Konfigurační cesty pro uložení posledního modelu ---
 CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".prumyslova_sit_app")
 LAST_MODEL_FILE = os.path.join(CONFIG_DIR, "last_model.txt")
-MODELS_DIR = "." 
+
+# ZMĚNA: Modely se nyní načítají z podadresáře "moje_modely"
+MODELS_DIR = "./moje_modely" 
+
+# Zajištění existence adresáře (prevence chyb při prvním spuštění)
+os.makedirs(MODELS_DIR, exist_ok=True)
 
 # --- Funkce pro persistenci cesty k modelu ---
 def load_last_model_path():
@@ -23,7 +28,7 @@ def load_last_model_path():
         try:
             with open(LAST_MODEL_FILE, 'r') as f:
                 path = f.read().strip()
-                if os.path.exists(path) and os.path.dirname(path) == MODELS_DIR:
+                if os.path.exists(path) and os.path.dirname(path) == os.path.normpath(MODELS_DIR):
                     return path
         except Exception as e:
             print(f"Chyba při načítání cesty k předchozímu modelu: {e}")
@@ -153,7 +158,7 @@ if __name__ == "__main__":
     last_used_model_path = load_last_model_path()
     last_used_model_filename = os.path.basename(last_used_model_path) if last_used_model_path else None
 
-    # Získání seznamu modelů v adresáři
+    # Získání seznamu modelů v adresáři moje_modely
     model_filenames_in_listbox = sorted([f for f in os.listdir(MODELS_DIR) if f.endswith('.pth') or f.endswith('.pt')])
 
     if not model_filenames_in_listbox:
