@@ -11,7 +11,8 @@ data/
 # ==============================================================================
 # 2. VÝSTUPY MODELŮ A KONFIGURACE
 # ==============================================================================
-# PyTorch modely (velké binární soubory)
+# PyTorch modely (binární soubory .pth a .pt) a reporty z trénování(.md)
+moje_modely/
 *.pth
 *.pt
 
