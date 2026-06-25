@@ -28,8 +28,14 @@ def load_last_model_path():
         try:
             with open(LAST_MODEL_FILE, 'r') as f:
                 path = f.read().strip()
-                if os.path.exists(path) and os.path.dirname(path) == os.path.normpath(MODELS_DIR):
+                # TOLERANTNÍ KONTROLA: Pokud stará cesta existuje, nebo pokud model existuje v nové složce
+                if os.path.exists(path):
                     return path
+                
+                # Pokud v souboru byla stará cesta (z rootu), zkusíme se podívat, zda už model není v nové složce
+                potential_new_path = os.path.join(MODELS_DIR, os.path.basename(path))
+                if os.path.exists(potential_new_path):
+                    return potential_new_path
         except Exception as e:
             print(f"Chyba při načítání cesty k předchozímu modelu: {e}")
     return None
