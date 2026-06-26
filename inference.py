@@ -204,6 +204,8 @@ if __name__ == "__main__":
         
         details_window = Toplevel(main_tk_root)
         details_window.title(f"Detail modelu: {model_filename}")
+        # Nastavíme okno jako transientní k hlavnímu root oknu pro lepší interakci se správcem oken
+        details_window.transient(main_tk_root)
         
         # Nastavení velikosti okna pro nové proporce
         if loss_data:
@@ -281,6 +283,11 @@ if __name__ == "__main__":
         btn_back.pack(side=tk.LEFT, padx=20)
         
         details_window.protocol("WM_DELETE_WINDOW", lambda: main_tk_root.destroy())
+
+        # Centrování okna na obrazovce pomocí tk::PlaceWindow
+        # Důležité: voláme update_idletasks před centrováním, aby okno mělo finální rozměry
+        details_window.update_idletasks()
+        details_window.eval(f'tk::PlaceWindow {str(details_window)} center')
 
 
     # --- 4.1. Grafický rozcestník výběru modelu ---
