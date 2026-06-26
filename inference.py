@@ -6,7 +6,6 @@ import os
 import tkinter as tk
 from tkinter import messagebox, Toplevel, ttk
 
-# Importy pro vykreslování grafů v Tkinteru
 import matplotlib
 matplotlib.use("TkAgg")
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -15,24 +14,17 @@ from matplotlib.figure import Figure
 # --- Konfigurační cesty pro uložení posledního modelu ---
 CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".prumyslova_sit_app")
 LAST_MODEL_FILE = os.path.join(CONFIG_DIR, "last_model.txt")
-
-# ZMĚNA: Modely se nyní načítají z podadresáře "moje_modely"
 MODELS_DIR = "./moje_modely" 
 
-# Zajištění existence adresáře (prevence chyb při prvním spuštění)
 os.makedirs(MODELS_DIR, exist_ok=True)
 
-# --- Funkce pro persistenci cesty k modelu ---
 def load_last_model_path():
     if os.path.exists(LAST_MODEL_FILE):
         try:
             with open(LAST_MODEL_FILE, 'r') as f:
                 path = f.read().strip()
-                # TOLERANTNÍ KONTROLA: Pokud stará cesta existuje, nebo pokud model existuje v nové složce
                 if os.path.exists(path):
                     return path
-                
-                # Pokud v souboru byla stará cesta (z rootu), zkusíme se podívat, zda už model není v nové složce
                 potential_new_path = os.path.join(MODELS_DIR, os.path.basename(path))
                 if os.path.exists(potential_new_path):
                     return potential_new_path
@@ -53,21 +45,16 @@ def save_last_model_path(path):
 class PrumyslovaSit(nn.Module):
     def __init__(self):
         super(PrumyslovaSit, self).__init__()
-        # 1. konvoluční blok
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
         self.bn1 = nn.BatchNorm2d(32)
-        
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
         
-        # 2. konvoluční blok
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
         self.bn2 = nn.BatchNorm2d(64)
         
-        # === DOPLNĚNÍ DO INFERENCE: 3. konvoluční blok ===
         self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
         self.bn3 = nn.BatchNorm2d(64)
         
-        # Plně propojené vrstvy
         self.fc1 = nn.Linear(64 * 32 * 32, 128)
         self.fc2 = nn.Linear(128, 2)
         
@@ -75,29 +62,18 @@ class PrumyslovaSit(nn.Module):
         self.dropout = nn.Dropout(0.2)
 
     def forward(self, x):
-        # 1. blok (256x256 -> 128x128)
         x = self.pool(self.relu(self.bn1(self.conv1(x))))
-        
-        # 2. blok (128x128 -> 64x64)
         x = self.pool(self.relu(self.bn2(self.conv2(x))))
-        
-        # === DOPLNĚNÍ DO INFERENCE: 3. blok (64x64 -> 32x32) ===
         x = self.pool(self.relu(self.bn3(self.conv3(x))))
-        
-        # Narovnání pro lineární vrstvu
         x = x.view(x.size(0), -1)
-        
         x = self.relu(self.fc1(x))
         x = self.dropout(x)
         x = self.fc2(x)
         return x
 
-# --- 2. Nastavení transformací pro vstupní obrázek ---
-transform = transforms.Compose([
-    transforms.Resize((256, 256)),
-    transforms.ToTensor(),
-    transforms.Normalize((0.5,), (0.5,))
-])
+# PŮVODNÍ STATICKÁ TRANSFORMACE BYLA ODSTRANĚNA.
+# Vytvoří se dynamicky níže podle načteného souboru s modelem.
+
 
 # --- 3. Funkce pro klasifikaci jednoho obrázku ---
 def classify_image(model, image_path, device, transform, class_names):
@@ -128,7 +104,6 @@ def classify_image(model, image_path, device, transform, class_names):
 
 # --- Pomocné funkce pro načítání dat z .md souboru ---
 def parse_md_file(md_path):
-    """Přečte .md soubor, vytáhne textový popis a data pro graf ztráty."""
     text_info = ""
     losses = []
     
@@ -140,7 +115,6 @@ def parse_md_file(md_path):
             lines = f.readlines()
 
         for line in lines:
-            # Extrakce dat pro graf z tabulky historie ztrát
             if "|" in line:
                 if "Epocha" in line or "---" in line:
                     continue
@@ -152,7 +126,6 @@ def parse_md_file(md_path):
                     except ValueError:
                         pass
             
-            # Formátování textu pro zobrazení (očištění od tabulkových znaků)
             if line.startswith("#"):
                 text_info += line.replace("#", "").strip() + "\n" + "="*30 + "\n"
             elif "|" in line:
@@ -175,7 +148,6 @@ if __name__ == "__main__":
 
     class_names = {0: "BAD", 1: "OK"}
 
-    # JEDINÝ ROOT PRO CELÝ SKRIPT - bude řídit celou aplikaci
     main_tk_root = tk.Tk()
     main_tk_root.withdraw()
 
@@ -185,7 +157,6 @@ if __name__ == "__main__":
     last_used_model_path = load_last_model_path()
     last_used_model_filename = os.path.basename(last_used_model_path) if last_used_model_path else None
 
-    # Získání seznamu modelů v adresáři moje_modely
     model_filenames_in_listbox = sorted([f for f in os.listdir(MODELS_DIR) if f.endswith('.pth') or f.endswith('.pt')])
 
     if not model_filenames_in_listbox:
@@ -193,13 +164,11 @@ if __name__ == "__main__":
         main_tk_root.destroy()
         exit()
 
-    # Funkce pro zobrazení okna s grafem a detaily
     def show_model_details_and_confirm(model_filename):
         base_name = os.path.splitext(model_filename)[0]
         md_filename = f"{base_name}.md"
         md_path = os.path.join(MODELS_DIR, md_filename)
         
-        # Načtení dat z markdownu
         text_info, loss_data = parse_md_file(md_path)
         
         details_window = Toplevel(main_tk_root)
@@ -272,14 +241,10 @@ if __name__ == "__main__":
         btn_back.pack(side=tk.LEFT, padx=20)
         
         details_window.protocol("WM_DELETE_WINDOW", lambda: main_tk_root.destroy())
-
-        # Centrování okna na obrazovce pomocí tk::PlaceWindow
         details_window.update_idletasks()
-        # Opraveno: Voláme eval na main_tk_root, ne na details_window
         main_tk_root.eval(f'tk::PlaceWindow {str(details_window)} center')
 
 
-    # --- 4.1. Grafický rozcestník výběru modelu ---
     def open_model_selection_window():
         model_select_window = Toplevel(main_tk_root)
         model_select_window.title("Výběr modelu sítě")
@@ -325,7 +290,6 @@ if __name__ == "__main__":
         model_select_window.protocol("WM_DELETE_WINDOW", lambda: main_tk_root.destroy())
 
 
-    # Prvotní start logiky
     if last_used_model_filename and last_used_model_filename in model_filenames_in_listbox:
         show_model_details_and_confirm(last_used_model_filename)
     else:
@@ -333,7 +297,7 @@ if __name__ == "__main__":
 
     main_tk_root.mainloop()
 
-    # --- 4.2. Načtení zvoleného modelu do PyTorchu ---
+    # --- 4.2. Načtení zvoleného modelu a jeho statistik ---
     if not selected_model_container:
         print("Výběr modelu byl zrušen. Ukončuji skript.")
         main_tk_root.destroy()
@@ -344,8 +308,29 @@ if __name__ == "__main__":
 
     model = PrumyslovaSit().to(device)
     try:
-        model.load_state_dict(torch.load(model_path, map_location=device))
-        print(f"\nModel '{model_name}' byl úspěšně načten.")
+        # --- ČISTÁ ZMĚNA ZDE: Načítáme checkpoint slovník a extrahujeme hodnoty ---
+        checkpoint = torch.load(model_path, map_location=device)
+        
+        # Kontrola, zda jde o nový typ checkpointu se statistikami
+        if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+            model.load_state_dict(checkpoint['state_dict'])
+            loaded_mean = checkpoint['mean']
+            loaded_std = checkpoint['std']
+            print(f"\nModel '{model_name}' úspěšně načten.")
+            print(f"Načtená normalizační data z modelu -> Průměr: {loaded_mean:.4f}, Odchylka: {loaded_std:.4f}")
+        else:
+            # Fallback pro případ, že byste omylem načetli nějaký starý model (než je přepíšete novými)
+            model.load_state_dict(checkpoint)
+            loaded_mean, loaded_std = 0.5, 0.5
+            print(f"\nUpozornění: Načten starý formát modelu '{model_name}'. Používám nouzovou normalizaci (0.5, 0.5).")
+
+        # Dynamické vytvoření transformace na základě právě načtených hodnot
+        transform = transforms.Compose([
+            transforms.Resize((256, 256)),
+            transforms.ToTensor(),
+            transforms.Normalize((loaded_mean,), (loaded_std,))
+        ])
+
         save_last_model_path(model_path)
 
         # --- 4.3. Grafický výběr obrázku k klasifikaci ---
@@ -362,7 +347,6 @@ if __name__ == "__main__":
             main_tk_root.destroy()
             exit()
 
-        # Otevíráme okno výběru obrázku jako Toplevel nad společným main_tk_root
         image_select_window = Toplevel(main_tk_root)
         image_select_window.title("Výběr obrázku k klasifikaci")
         image_select_window.geometry("400x300")
@@ -381,7 +365,7 @@ if __name__ == "__main__":
                 selected_file_name = image_files[selection_index]
                 selected_image_container.append(os.path.join(image_dir, selected_file_name))
                 image_select_window.destroy()
-                main_tk_root.quit()  # Ukončí druhý mainloop
+                main_tk_root.quit()
             except IndexError:
                 messagebox.showwarning("Upozornění", "Musíte nejdříve kliknutím vybrat obrázek ze seznamu!")
 
@@ -398,14 +382,12 @@ if __name__ == "__main__":
 
         final_image_path = selected_image_container[0]
 
-        # --- Zobrazení vybraného obrázku na obrazovce ---
         print(f"Zobrazení vybraného obrázku: {final_image_path}")
         try:
             img = Image.open(final_image_path)
             max_size = (600, 600)
             img.thumbnail(max_size, Image.Resampling.LANCZOS)
 
-            # Okno náhledu jako Toplevel
             image_display_window = Toplevel(main_tk_root)
             image_display_window.title(f"Vybraný obrázek: {os.path.basename(final_image_path)}")
 
@@ -417,13 +399,12 @@ if __name__ == "__main__":
 
             def close_display():
                 image_display_window.destroy()
-                main_tk_root.quit()  # Ukončí třetí mainloop
+                main_tk_root.quit()
 
             close_button = tk.Button(image_display_window, text="Zavřít náhled a pokračovat", command=close_display, bg="#f44336", fg="white", font=("Arial", 10))
             close_button.pack(pady=10)
 
-            # Centrování okna na obrazovce
-            image_display_window.update_idletasks() # Zajistí, že widgety jsou vykresleny a mají správné rozměry
+            image_display_window.update_idletasks()
             screen_width = main_tk_root.winfo_screenwidth()
             screen_height = main_tk_root.winfo_screenheight()
             
@@ -441,7 +422,6 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Chyba při zobrazení obrázku: {e}")
 
-        # Úklid hlavního root okna z paměti před samotným výpisem klasifikace
         main_tk_root.destroy()
 
         # --- 4.4. Spuštění klasifikace ---
