@@ -357,6 +357,8 @@ if __name__ == "__main__":
 | **Learning Rate (LR)** | {lr} |
 | **Batch Size** | {batch_size} |
 | **Použité zařízení** | {device} |
+| **Normalizace - Průměr** | {calculated_mean:.4f} |
+| **Normalizace - Směr. odchylka** | {calculated_std:.4f} |
 
 ### Výsledky testování
 | Metrika | Hodnota |
