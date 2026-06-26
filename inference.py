@@ -426,10 +426,18 @@ if __name__ == "__main__":
             close_button = tk.Button(image_display_window, text="Zavřít náhled a pokračovat", command=close_display, bg="#f44336", fg="white", font=("Arial", 10))
             close_button.pack(pady=10)
 
-            # Centrování okna na obrazovce pomocí tk::PlaceWindow
-            # Použijeme update_idletasks, abychom zajistili, že okno má finální rozměry před centrováním
-            image_display_window.update_idletasks()
-            image_display_window.eval(f'tk::PlaceWindow {str(image_display_window)} center')
+            # Centrování okna na obrazovce
+            image_display_window.update_idletasks() # Zajistí, že widgety jsou vykresleny a mají správné rozměry
+            screen_width = main_tk_root.winfo_screenwidth()
+            screen_height = main_tk_root.winfo_screenheight()
+            
+            window_width = image_display_window.winfo_width()
+            window_height = image_display_window.winfo_height()
+            
+            x = (screen_width // 2) - (window_width // 2)
+            y = (screen_height // 2) - (window_height // 2)
+            
+            image_display_window.geometry(f"+{x}+{y}")
 
             image_display_window.protocol("WM_DELETE_WINDOW", close_display)
             main_tk_root.mainloop()
