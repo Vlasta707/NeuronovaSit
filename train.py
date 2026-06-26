@@ -32,24 +32,8 @@ class VLISTDataset(torch.utils.data.Dataset):
         return image, label
 
 # --- 2. Nastavení transformací a DataLoaderů ---
-
-# Augmentace pro TRÉNOVÁNÍ (probíhá dynamicky v paměti)
-train_transform = transforms.Compose([
-    transforms.RandomRotation(10),               # Náhodná rotace o max trochu tam a zpět (-10° až +10°)
-    transforms.RandomHorizontalFlip(p=0.5),      # Překlopení vodorovně s pravděpodobností 50 %
-    transforms.RandomVerticalFlip(p=0.5),        # Překlopení svisle (ideální pro kruhová dna)
-    transforms.ColorJitter(brightness=0.2, contrast=0.2), # Náhodná změna jasu a kontrastu
-    transforms.ToTensor(),                       # Škáluje [0, 255] na [0.0, 1.0]
-    transforms.Normalize((0.5,), (0.5,))         # Standardní normalizace
-])
-
-# ČISTÁ transformace pro TESTOVÁNÍ (žádná augmentace!)
-test_transform = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize((0.5,), (0.5,))
-])
-
-print("Načítám připravená data z .npy souborů...")
+# Původní předdefinované `train_transform` a `test_transform` byly odstraněny,
+# protože jsou dynamicky vytvořeny později na základě uživatelského vstupu.
 
 # --- 3. Definice architektury CNN ---
 class PrumyslovaSit(nn.Module):
@@ -105,7 +89,8 @@ model = PrumyslovaSit().to(device)
 print(f"Model byl odeslán na zařízení: {device}")
 
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+# Původní inicializace optimizeru zde byla odstraněna, protože je ihned přepsána
+# po načtení konfigurace.
 
 # --- Nastavení parametrů pro trénování
 if not os.path.exists('train_config.json'):
@@ -162,6 +147,7 @@ with open('train_config.json', 'w') as f:
 train_transform_list = []
 if use_augmentation:
     if rot > 0: train_transform_list.append(transforms.RandomRotation(rot))
+    # Opraveno: odstraněno zbytečné přiřazení k train_transform_list_and
     if h_flip > 0: train_transform_list.append(transforms.RandomHorizontalFlip(p=h_flip))
     if v_flip > 0: train_transform_list.append(transforms.RandomVerticalFlip(p=v_flip))
     if cj_bright > 0: train_transform_list.append(transforms.ColorJitter(brightness=cj_bright, contrast=cj_contrast))
@@ -187,7 +173,10 @@ if use_augmentation:
 print("="*40 + "\n")
 
 # --- KONEČNÁ ČÁST SKRIPTU ---
+# Optimalizátor je inicializován zde s načteným learning rate
 optimizer = optim.Adam(model.parameters(), lr=lr)
+
+print("Načítám připravená data z .npy souborů...") # Přesunuto sem pro lepší logický tok
 
 train_dataset = VLISTDataset(image_data_path='./data/vlist_train_images.npy', label_data_path='./data/vlist_train_labels.npy', transform=train_transform)
 test_dataset = VLISTDataset(image_data_path='./data/vlist_test_images.npy', label_data_path='./data/vlist_test_labels.npy', transform=test_transform)
@@ -315,7 +304,7 @@ if __name__ == "__main__":
 | :--- | :--- | :--- |
 {loss_table_content}
 """
-            
+           
             with open(md_path, 'w', encoding='utf-8') as md_file:
                 md_file.write(markdown_content)
             print(f"Statistiky a historie ztrát byly úspěšně uloženy do: {md_path}")
