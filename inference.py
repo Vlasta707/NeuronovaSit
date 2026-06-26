@@ -53,25 +53,40 @@ def save_last_model_path(path):
 class PrumyslovaSit(nn.Module):
     def __init__(self):
         super(PrumyslovaSit, self).__init__()
+        # 1. konvoluční blok
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
-        self.bn1 = nn.BatchNorm2d(32)  # Normalizace pro 1. vrstvu
+        self.bn1 = nn.BatchNorm2d(32)
         
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
         
+        # 2. konvoluční blok
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
-        self.bn2 = nn.BatchNorm2d(64)  # Normalizace pro 2. vrstvu
+        self.bn2 = nn.BatchNorm2d(64)
         
+        # === DOPLNĚNÍ DO INFERENCE: 3. konvoluční blok ===
+        self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
+        self.bn3 = nn.BatchNorm2d(64)
+        
+        # Plně propojené vrstvy
         self.fc1 = nn.Linear(64 * 32 * 32, 128)
         self.fc2 = nn.Linear(128, 2)
         
-        self.relu = nn.LeakyReLU(0.1)  # Pokročilejší aktivace proti "umírání" neuronů
-        self.dropout = nn.Dropout(0.2)  # Optimalizovaný dropout pro stabilnější učení
+        self.relu = nn.LeakyReLU(0.1)
+        self.dropout = nn.Dropout(0.2)
 
     def forward(self, x):
+        # 1. blok (256x256 -> 128x128)
         x = self.pool(self.relu(self.bn1(self.conv1(x))))
+        
+        # 2. blok (128x128 -> 64x64)
         x = self.pool(self.relu(self.bn2(self.conv2(x))))
-        x = self.pool(x)
+        
+        # === DOPLNĚNÍ DO INFERENCE: 3. blok (64x64 -> 32x32) ===
+        x = self.pool(self.relu(self.bn3(self.conv3(x))))
+        
+        # Narovnání pro lineární vrstvu
         x = x.view(x.size(0), -1)
+        
         x = self.relu(self.fc1(x))
         x = self.dropout(x)
         x = self.fc2(x)
