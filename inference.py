@@ -379,15 +379,14 @@ if __name__ == "__main__":
         image_select_window.protocol("WM_DELETE_WINDOW", lambda: main_tk_root.destroy())
         main_tk_root.mainloop()
 
-        # Rozcestník podle zvoleného režimu
+# Rozcestník podle zvoleného režimu
         if classify_all_mode[0]:
             # --- REŽIM: HROMADNÁ KLASIFIKACE ---
             main_tk_root.destroy()  # Zavřeme skryté hlavní okno
             
             print(f"\n--- Spouštím hromadnou klasifikaci adresáře '{image_dir}' ---")
-            # Upravené záhlaví s pevnou šířkou 9 pro "Spolehlivost" (text bude zkrácen)
+            # Záhlaví zůstává nezměněno podle zadání
             print(f"{'Třída':<6} | {'Spolehlivost':<9} | {'Jméno souboru':<40}") 
-            # Délka čáry upravena na (6 + 3 + 9 + 3 + 40) = 61
             print("-" * 61) 
             
             for file_name in image_files:
@@ -395,11 +394,11 @@ if __name__ == "__main__":
                 result = classify_image(model, full_path, device, transform, class_names)
                 if result:
                     prediction, confidence = result
-                    # Pravé zarovnání spolehlivosti na 9 znaků
-                    print(f"{prediction:<6} | {f'{confidence:.2f}%':>9} | {file_name:<40}") 
+                    # Zde je ta změna: šířka 3 (doleva) a šířka 7 (doprava)
+                    print(f"{prediction:<3} | {f'{confidence:.2f}%':>7} | {file_name:<40}") 
                 else:
-                    # Pravé zarovnání 'N/A' na 9 znaků pro selhání
-                    print(f"{'SELHALO':<6} | {'N/A':>9} | {file_name:<40}") 
+                    # Zde také, pro případ chyby (zkráceno na 'ERR')
+                    print(f"{'ERR':<3} | {'N/A':>7} | {file_name:<40}") 
         else:
             # --- REŽIM: JEDEN OBRÁZEK (Původní chování) ---
             if not selected_image_container:
