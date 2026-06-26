@@ -33,7 +33,18 @@ class VLISTDataset(torch.utils.data.Dataset):
 
 # --- 2. Nastavení transformací a DataLoaderů ---
 def calculate_dataset_stats(image_data_path, label_data_path):
-    print("Vypočítávám průměr a směrodatnou odchylku pro normalizaci z trénovacích dat...")
+    print("Vypočítávám průměr, směrodatnou odchylku a rozložení tříd z trénovacích dat...")
+    
+    # --- PRIDANO: Kontrola vyváženosti tříd pomocí numpy ---
+    try:
+        labels = np.load(label_data_path)
+        unique, counts = np.unique(labels, return_counts=True)
+        class_distribution = dict(zip(unique.tolist(), counts.tolist()))
+        print(f"Rozložení tříd v trénovacích datech: {class_distribution}")
+    except Exception as e:
+        print(f"Nepodařilo se spočítat rozložení tříd: {e}")
+        class_distribution = None
+
     temp_transform = transforms.Compose([transforms.ToTensor()])
     temp_dataset = VLISTDataset(image_data_path=image_data_path, label_data_path=label_data_path, transform=temp_transform)
     temp_loader = DataLoader(temp_dataset, batch_size=128, shuffle=False, num_workers=0)
@@ -51,14 +62,14 @@ def calculate_dataset_stats(image_data_path, label_data_path):
 
     if num_pixels == 0:
         print("Upozornění: Dataset neobsahuje žádné pixely pro výpočet statistik. Používám výchozí hodnoty (0.5, 0.5).")
-        return 0.5, 0.5
+        return 0.5, 0.5, class_distribution
 
     calculated_mean = sum_pixels / num_pixels
     calculated_variance = (sum_sq_pixels / num_pixels) - (calculated_mean ** 2)
     calculated_std = torch.sqrt(torch.clamp(calculated_variance, min=1e-5)) 
 
     print(f"Vypočítaný průměr datasetu: {calculated_mean.item():.4f}, Směrodatná odchylka datasetu: {calculated_std.item():.4f}")
-    return calculated_mean.item(), calculated_std.item()
+    return calculated_mean.item(), calculated_std.item(), class_distribution
 
 
 # --- 3. Definice architektury CNN ---
@@ -97,23 +108,22 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = PrumyslovaSit().to(device)
 print(f"Model byl odeslán na zařízení: {device}")
 
-criterion = nn.CrossEntropyLoss()
-
 TRAIN_IMAGE_DATA_PATH = './data/vlist_train_images.npy'
 TRAIN_LABEL_DATA_PATH = './data/vlist_train_labels.npy'
 TEST_IMAGE_DATA_PATH = './data/vlist_test_images.npy'
 TEST_LABEL_DATA_PATH = './data/vlist_test_labels.npy'
 
-calculated_mean, calculated_std = calculate_dataset_stats(TRAIN_IMAGE_DATA_PATH, TRAIN_LABEL_DATA_PATH)
+# Upraveno: funkce nyní vrací i distribuci tříd
+calculated_mean, calculated_std, class_dist = calculate_dataset_stats(TRAIN_IMAGE_DATA_PATH, TRAIN_LABEL_DATA_PATH)
 
 if not os.path.exists('train_config.json'):
     with open('train_config.json', 'w') as f:
-        json.dump({'epochs': 20, 'lr': 0.001, 'batch_size': 16, 'use_aug': 'a', 'rot': 8, 'h_flip': 0.5, 'v_flip': 0.5, 'cj': 0.1}, f)
+        json.dump({'epochs': 20, 'lr': 0.001, 'batch_size': 16, 'use_aug': 'a', 'rot': 8, 'h_flip': 0.5, 'v_flip': 0.5, 'cj': 0.1, 'use_weights': 'n'}, f)
 try:
     with open('train_config.json', 'r') as f:
         config = json.load(f)
 except Exception:
-    config = {'epochs': 20, 'lr': 0.001, 'batch_size': 16, 'use_aug': 'a', 'rot': 8, 'h_flip': 0.5, 'v_flip': 0.5, 'cj': 0.1}
+    config = {'epochs': 20, 'lr': 0.001, 'batch_size': 16, 'use_aug': 'a', 'rot': 8, 'h_flip': 0.5, 'v_flip': 0.5, 'cj': 0.1, 'use_weights': 'n'}
 
 def get_param(prompt, default, is_int=False, is_text=False):
     while True:
@@ -132,6 +142,22 @@ epochs = int(get_param('Zadejte počet epoch', config.get('epochs', 20), is_int=
 lr = get_param('Zadejte rychlost optimalizace (LR)', config.get('lr', 0.001))
 batch_size = int(get_param('Zadejte velikost batchu', config.get('batch_size', 16), is_int=True))
 
+# --- PRIDANO: Rozhodování o vyvážení vah v chybové funkci ---
+use_weights_input = get_param('Chcete penalizovat nevyváženost tříd pomocí vah (Weighted Loss)? (A/N)', config.get('use_weights', 'n'), is_text=True)
+use_weighted_loss = use_weights_input == 'a'
+
+if use_weighted_loss and class_dist and len(class_dist) == 2:
+    # Inverzní frekvence: váha = celkem / (počet_tříd * počet_vzorků_třídy)
+    total_samples = sum(class_dist.values())
+    w0 = total_samples / (2.0 * class_dist.get(0, 1))
+    w1 = total_samples / (2.0 * class_dist.get(1, 1))
+    loss_weights = torch.tensor([w0, w1], dtype=torch.float).to(device)
+    criterion = nn.CrossEntropyLoss(weight=loss_weights)
+    print(f"  -> Nastaveny váhy chybové funkce: Třída 0 = {w0:.2f}, Třída 1 = {w1:.2f}")
+else:
+    criterion = nn.CrossEntropyLoss()
+    print("  -> Použita standardní nevážená CrossEntropyLoss.")
+
 print("\n--- Nastavení Data Augmentace ---")
 use_aug = get_param('Chcete použít Data Augmentaci? (A/N)', config.get('use_aug', 'a'), is_text=True)
 use_augmentation = use_aug != 'n'
@@ -149,7 +175,8 @@ with open('train_config.json', 'w') as f:
     json.dump({
         'epochs': epochs, 'lr': lr, 'batch_size': batch_size, 
         'use_aug': 'a' if use_augmentation else 'n', 
-        'rot': rot, 'h_flip': h_flip, 'v_flip': v_flip, 'cj': cj_bright
+        'rot': rot, 'h_flip': h_flip, 'v_flip': v_flip, 'cj': cj_bright,
+        'use_weights': 'a' if use_weighted_loss else 'n'
     }, f)
 
 train_transform_list = []
@@ -173,6 +200,7 @@ print("Konfigurace spuštění:")
 print(f"  Epochy: {epochs}")
 print(f"  Learning Rate: {lr}")
 print(f"  Velikost batchu: {batch_size}")
+print(f"  Vážená ztráta (Loss): {'ANO' if use_weighted_loss else 'NE'}")
 print(f"  Normalizace: Průměr={calculated_mean:.4f}, Směrodatná odchylka={calculated_std:.4f}")
 print(f"  Augmentace dat: {'ZAPNUTA' if use_augmentation else 'VYPNUTA'}")
 if use_augmentation:
@@ -255,10 +283,9 @@ if __name__ == "__main__":
     accuracy, correct, total = test(model, test_loader)
 
     # --- 7. Uložení natrénovaného modelu a statistik do Markdownu ---
-    # Upraveno pro použití funkce get_param pro konzistentní interaktivní vstup
     save_decision = get_param('Uložit model? (A/N)', 'a', is_text=True)
 
-    if save_decision == 'a': # Změněno z ['ano', 'y'] na 'a'
+    if save_decision == 'a':
         model_name = input("Zadejte jméno souboru pro model (bez přípony, např. 'muj_prvni_model'): ").strip()
 
         if model_name:
@@ -273,7 +300,6 @@ if __name__ == "__main__":
             output_dir = './moje_modely'
             os.makedirs(output_dir, exist_ok=True)
 
-            # --- ČISTÁ ZMĚNA ZDE: Ukládáme komplexní checkpoint slovník ---
             model_path = os.path.join(output_dir, model_filename)
             checkpoint = {
                 'state_dict': model.state_dict(),
@@ -294,6 +320,9 @@ if __name__ == "__main__":
             # 3. Sestavení celkového Markdown dokumentu a uložení do podadresáře
             md_path = os.path.join(output_dir, md_filename)
             
+            # Formátování distribuce pro MD zprávu
+            dist_str = f"Třída 0: {class_dist.get(0, 0)}, Třída 1: {class_dist.get(1, 0)}" if class_dist else "Neuvedeno"
+
             markdown_content = f"""# Vyhodnocení tréninku modelu: {base_name}
 
 ### Trénovací parametry
@@ -303,6 +332,8 @@ if __name__ == "__main__":
 | **Learning Rate (LR)** | {lr} |
 | **Batch Size** | {batch_size} |
 | **Použité zařízení** | {device} |
+| **Vážená Loss (Imbalance)** | {'ANO' if use_weighted_loss else 'NE'} |
+| **Rozložení tříd v datech** | {dist_str} |
 | **Normalizace - Průměr** | {calculated_mean:.4f} |
 | **Normalizace - Směr. odchylka** | {calculated_std:.4f} |
 
