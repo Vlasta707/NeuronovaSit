@@ -150,6 +150,11 @@ if __name__ == "__main__":
     class_names = {0: "BAD", 1: "OK"}
 
     main_tk_root = tk.Tk()
+    # main_tk_root je zde inicializován a okamžitě skryt ('withdraw').
+    # Slouží jako neviditelný "dispatcher" pro Toplevel okna.
+    # Umožňuje spouštění a ovládání více nezávislých dialogů (výběr modelu, obrázku, náhled)
+    # pomocí opakovaných volání mainloop(), aniž by se hlavní okno zobrazovalo.
+    # To zabraňuje problémům s Tkinter event loop a životním cyklem oken
     main_tk_root.withdraw()
 
     selected_model_container = []
@@ -296,7 +301,9 @@ if __name__ == "__main__":
     else:
         open_model_selection_window()
 
-    main_tk_root.mainloop()
+    main_tk_root.mainloop() # První mainloop() pro okno výběru/detailu modelu.
+    # Zde se mainloop() spustí a čeká, dokud není okno pro výběr modelu uzavřeno
+    # nebo potvrzeno, což následně volá main_tk_root.quit().
 
     # --- 4.2. Načtení zvoleného modelu a jeho statistik ---
     if not selected_model_container:
@@ -370,7 +377,9 @@ if __name__ == "__main__":
         image_button.pack(pady=10)
 
         image_select_window.protocol("WM_DELETE_WINDOW", lambda: main_tk_root.destroy())
-        main_tk_root.mainloop()
+        main_tk_root.mainloop() # Druhé mainloop() pro okno výběru obrázku.
+        # Po uzavření okna výběru modelu se spustí druhý mainloop() pro okno výběru obrázku.
+        # Tato sekvence je možná díky tomu, že hlavní root okno (main_tk_root) je skryté.
 
         if not selected_image_container:
             print("Výběr obrázku byl zrušen. Ukončuji skript.")
@@ -414,12 +423,15 @@ if __name__ == "__main__":
             image_display_window.geometry(f"+{x}+{y}")
 
             image_display_window.protocol("WM_DELETE_WINDOW", close_display)
-            main_tk_root.mainloop()
+            main_tk_root.mainloop() # Třetí mainloop() pro okno náhledu obrázku.
+            # Podobně jako předchozí mainloop(), toto volání čeká na uzavření
+            # náhledu obrázku před pokračováním ve skriptu.
+            # main_tk_root.quit() v close_display() ukončí tento mainloop().
 
         except Exception as e:
             print(f"Chyba při zobrazení obrázku: {e}")
 
-        main_tk_root.destroy()
+        main_tk_root.destroy() # Zničení hlavního root okna po dokončení všech interakcí.
 
         # --- 4.4. Spuštění klasifikace ---
         result = classify_image(model, final_image_path, device, transform, class_names)
