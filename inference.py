@@ -105,7 +105,7 @@ def parse_md_file(md_path):
     losses = []
     
     if not os.path.exists(md_path):
-        return "K tomuto modelu nebyl znalezen .md soubor s vyhodnocením.", []
+        return "K tomuto modelu nebyl nalezen .md soubor s vyhodnocením.", []
 
     try:
         with open(md_path, 'r', encoding='utf-8') as f:
@@ -331,7 +331,7 @@ if __name__ == "__main__":
         image_dir = './syrova_data'
 
         if not os.path.exists(image_dir):
-            messagebox.showerror("Chyba", f"Adresář '{image_dir}' nebyl znalezen. Vytvořte jej a vložte do něj obrázky .png pro klasifikaci.")
+            messagebox.showerror("Chyba", f"Adresář '{image_dir}' nebyl nalezen. Vytvořte jej a vložte do něj obrázky .png pro klasifikaci.")
             main_tk_root.destroy()
             exit()
 
@@ -385,18 +385,16 @@ if __name__ == "__main__":
             main_tk_root.destroy()  # Zavřeme skryté hlavní okno
             
             print(f"\n--- Spouštím hromadnou klasifikaci adresáře '{image_dir}' ---")
-            print(f"{'Jméno souboru':<40} | {'Třída':<6} | {'Spolehlivost':<12}")
-            print("-" * 65)
-            
+            print(f"{'Třída':<6} | {'Spolehlivost':<12} | {'Jméno souboru':<40}") # Upravené záhlaví
+            print("-" * 65) # Délka čáry zůstává stejná, protože celková šířka textu se nezměnila
             for file_name in image_files:
                 full_path = os.path.join(image_dir, file_name)
                 result = classify_image(model, full_path, device, transform, class_names)
                 if result:
                     prediction, confidence = result
-                    print(f"{file_name:<40} | {prediction:<6} | {confidence:.2f}%")
+                    print(f"{prediction:<6} | {confidence:.2f}% | {file_name:<40}") # Upravené pořadí výstupu
                 else:
-                    print(f"{file_name:<40} | SELHALO")
-                    
+                    print(f"{'SELHALO':<6} | {'N/A':<12} | {file_name:<40}") # Upravené pořadí pro selhání
         else:
             # --- REŽIM: JEDEN OBRÁZEK (Původní chování) ---
             if not selected_image_container:
