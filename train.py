@@ -33,7 +33,58 @@ class VLISTDataset(torch.utils.data.Dataset):
 
 # --- 2. Nastavení transformací a DataLoaderů ---
 # Původní předdefinované `train_transform` a `test_transform` byly odstraněny,
-# protože jsou dynamicky vytvořeny později na základě uživatelského vstupu.
+# protože jsou dynamicky vytvořeny později na základě uživatelského vstupu a vypočtených statistik.
+
+# Funkce pro výpočet průměru a směrodatné odchylky datasetu pro normalizaci
+def calculate_dataset_stats(image_data_path, label_data_path):
+    print("Vypočítávám průměr a směrodatnou odchylku pro normalizaci z trénovacích dat...")
+    
+    # Dočasná transformace jen pro převod na tensor a škálování na [0, 1]
+    # Bez normalizace, aby se statistiky počítaly na reálných hodnotách (0-1)
+    temp_transform = transforms.Compose([
+        transforms.ToTensor()
+    ])
+    
+    # Dočasný dataset a DataLoader pro výpočet statistik
+    # labels jsou potřeba pro VLISTDataset, i když se nepoužijí pro výpočet statik
+    temp_dataset = VLISTDataset(image_data_path=image_data_path, label_data_path=label_data_path, transform=temp_transform)
+    
+    # Použijeme vyšší batch size pro rychlejší výpočet statistik
+    # num_workers=0 je stabilnější pro jednoúčelové výpočty statistik
+    temp_loader = DataLoader(temp_dataset, batch_size=128, shuffle=False, num_workers=0)
+
+    # Inicializace pro kumulaci sum a počtu pixelů
+    sum_pixels = 0.0
+    sum_sq_pixels = 0.0
+    num_pixels = 0
+
+    for images, _ in temp_loader:
+        # images shape: (batch_size, channels, height, width)
+        # Pro grayscale images: (batch_size, 1, H, W)
+        
+        # Přesun na CPU pro výpočty, pokud je na GPU (šetří paměť GPU pro model)
+        images = images.cpu() 
+        
+        # Zploštění všech pixelů do jednorozměrného tenzoru
+        pixels = images.view(-1) # Všechny pixely ze všech obrázků v batchi
+        
+        sum_pixels += torch.sum(pixels)
+        sum_sq_pixels += torch.sum(pixels ** 2)
+        num_pixels += pixels.numel() # Počet prvků (pixelů) v aktuálním batchi
+
+    if num_pixels == 0:
+        print("Upozornění: Dataset neobsahuje žádné pixely pro výpočet statistik. Používám výchozí hodnoty (0.5, 0.5).")
+        return 0.5, 0.5 # Návrat k výchozím hodnotám, pokud nejsou data
+
+    calculated_mean = sum_pixels / num_pixels
+    # Variance = E[X^2] - (E[X])^2
+    calculated_variance = (sum_sq_pixels / num_pixels) - (calculated_mean ** 2)
+    # Zabráníme záporné směrodatné odchylce kvůli zaokrouhlovacím chybám (clamp na min. 1e-5)
+    calculated_std = torch.sqrt(torch.clamp(calculated_variance, min=1e-5)) 
+
+    print(f"Vypočítaný průměr datasetu: {calculated_mean.item():.4f}, Směrodatná odchylka datasetu: {calculated_std.item():.4f}")
+    return calculated_mean.item(), calculated_std.item()
+
 
 # --- 3. Definice architektury CNN ---
 class PrumyslovaSit(nn.Module):
@@ -92,6 +143,15 @@ criterion = nn.CrossEntropyLoss()
 # Původní inicializace optimizeru zde byla odstraněna, protože je ihned přepsána
 # po načtení konfigurace.
 
+# Cesty k datům pro výpočet statistik a pro trénink/testování
+TRAIN_IMAGE_DATA_PATH = './data/vlist_train_images.npy'
+TRAIN_LABEL_DATA_PATH = './data/vlist_train_labels.npy'
+TEST_IMAGE_DATA_PATH = './data/vlist_test_images.npy'
+TEST_LABEL_DATA_PATH = './data/vlist_test_labels.npy'
+
+# PŘED interaktivními prompty vypočítáme průměr a směrodatnou odchylku
+calculated_mean, calculated_std = calculate_dataset_stats(TRAIN_IMAGE_DATA_PATH, TRAIN_LABEL_DATA_PATH)
+
 # --- Nastavení parametrů pro trénování
 if not os.path.exists('train_config.json'):
     with open('train_config.json', 'w') as f:
@@ -147,16 +207,20 @@ with open('train_config.json', 'w') as f:
 train_transform_list = []
 if use_augmentation:
     if rot > 0: train_transform_list.append(transforms.RandomRotation(rot))
-    # Opraveno: odstraněno zbytečné přiřazení k train_transform_list_and
     if h_flip > 0: train_transform_list.append(transforms.RandomHorizontalFlip(p=h_flip))
     if v_flip > 0: train_transform_list.append(transforms.RandomVerticalFlip(p=v_flip))
     if cj_bright > 0: train_transform_list.append(transforms.ColorJitter(brightness=cj_bright, contrast=cj_contrast))
 
 train_transform_list.append(transforms.ToTensor())
-train_transform_list.append(transforms.Normalize((0.5,), (0.5,)))
+# Použijeme vypočítané hodnoty pro normalizaci
+train_transform_list.append(transforms.Normalize((calculated_mean,), (calculated_std,)))
 
 train_transform = transforms.Compose(train_transform_list)
-test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
+# Použijeme vypočítané hodnoty pro normalizaci i u testovací sady
+test_transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize((calculated_mean,), (calculated_std,))
+])
 
 # --- REKAPITULACE V KONZOLI ---
 print("\n" + "="*40)
@@ -164,6 +228,7 @@ print("Konfigurace spuštění:")
 print(f"  Epochy: {epochs}")
 print(f"  Learning Rate: {lr}")
 print(f"  Velikost batchu: {batch_size}")
+print(f"  Normalizace: Průměr={calculated_mean:.4f}, Směrodatná odchylka={calculated_std:.4f}")
 print(f"  Augmentace dat: {'ZAPNUTA' if use_augmentation else 'VYPNUTA'}")
 if use_augmentation:
     print(f"    - Max rotace: {rot}°")
@@ -176,10 +241,10 @@ print("="*40 + "\n")
 # Optimalizátor je inicializován zde s načteným learning rate
 optimizer = optim.Adam(model.parameters(), lr=lr)
 
-print("Načítám připravená data z .npy souborů...") # Přesunuto sem pro lepší logický tok
+print("Načítám připravená data z .npy souborů pro trénink a test...") 
 
-train_dataset = VLISTDataset(image_data_path='./data/vlist_train_images.npy', label_data_path='./data/vlist_train_labels.npy', transform=train_transform)
-test_dataset = VLISTDataset(image_data_path='./data/vlist_test_images.npy', label_data_path='./data/vlist_test_labels.npy', transform=test_transform)
+train_dataset = VLISTDataset(image_data_path=TRAIN_IMAGE_DATA_PATH, label_data_path=TRAIN_LABEL_DATA_PATH, transform=train_transform)
+test_dataset = VLISTDataset(image_data_path=TEST_IMAGE_DATA_PATH, label_data_path=TEST_LABEL_DATA_PATH, transform=test_transform)
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
@@ -304,7 +369,7 @@ if __name__ == "__main__":
 | :--- | :--- | :--- |
 {loss_table_content}
 """
-           
+            
             with open(md_path, 'w', encoding='utf-8') as md_file:
                 md_file.write(markdown_content)
             print(f"Statistiky a historie ztrát byly úspěšně uloženy do: {md_path}")
