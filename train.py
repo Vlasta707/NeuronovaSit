@@ -162,7 +162,7 @@ with open('train_config.json', 'w') as f:
 train_transform_list = []
 if use_augmentation:
     if rot > 0: train_transform_list.append(transforms.RandomRotation(rot))
-    if h_flip > 0: train_transform_list_and = train_transform_list.append(transforms.RandomHorizontalFlip(p=h_flip))
+    if h_flip > 0: train_transform_list.append(transforms.RandomHorizontalFlip(p=h_flip))
     if v_flip > 0: train_transform_list.append(transforms.RandomVerticalFlip(p=v_flip))
     if cj_bright > 0: train_transform_list.append(transforms.ColorJitter(brightness=cj_bright, contrast=cj_contrast))
 
