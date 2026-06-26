@@ -102,10 +102,10 @@ def classify_image(model, image_path, device, transform, class_names):
 # --- Pomocné funkce pro načítání dat z .md souboru ---
 def parse_md_file(md_path):
     text_info = ""
-    losses = []
+    epoch_losses = {} # Slovník pro ukládání {epocha: [seznam_ztrát]}
     
     if not os.path.exists(md_path):
-        return "K tomuto modelu nebyl nalezen .md soubor s vyhodnocením.", []
+        return "K tomuto modelu nebyl nalezen .md soubor s vyhodnocením.", {}
 
     try:
         with open(md_path, 'r', encoding='utf-8') as f:
@@ -119,8 +119,14 @@ def parse_md_file(md_path):
                     parts = [p.strip() for p in line.split("|") if p.strip()]
                     if len(parts) >= 3:
                         try:
+                            # Zpracování čísla epochy (odstranění formátu "1/10" apod.)
+                            epoch_part = parts[0].split('/')[0].strip()
+                            epoch_num = int(epoch_part)
                             loss_val = float(parts[2])
-                            losses.append(loss_val)
+                            
+                            if epoch_num not in epoch_losses:
+                                epoch_losses[epoch_num] = []
+                            epoch_losses[epoch_num].append(loss_val)
                         except ValueError:
                             pass
             
@@ -136,7 +142,13 @@ def parse_md_file(md_path):
     except Exception as e:
         text_info = f"Chyba při čtení statistik: {e}"
         
-    return text_info, losses
+    # Výpočet průměrné ztráty pro každou epochu
+    averaged_losses = {}
+    for epoch, losses in epoch_losses.items():
+        if losses:
+            averaged_losses[epoch] = sum(losses) / len(losses)
+            
+    return text_info, averaged_losses
 
 
 # --- 4. Hlavní část skriptu ---
@@ -201,12 +213,21 @@ if __name__ == "__main__":
             right_frame = tk.Frame(main_frame)
             right_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
             
+            # Řazení epoch pro správný průběh grafu
+            epochs = sorted(loss_data.keys())
+            losses = [loss_data[ep] for ep in epochs]
+            
             fig = Figure(figsize=(10, 5), dpi=100)
             ax = fig.add_subplot(111)
-            ax.plot(loss_data, marker='.', color='#FF5722', label='Loss')
-            ax.set_title("Průběh Ztráty (Loss History)")
-            ax.set_xlabel("Průběh trénování (záznamy chyb)")
-            ax.set_ylabel("Ztráta")
+            # Vykreslení průměrných ztrát za epochu
+            ax.plot(epochs, losses, marker='o', linestyle='-', color='#FF5722', label='Průměrná Loss za epochu')
+            ax.set_title("Průběh Ztráty (Averaged Loss History per Epoch)")
+            ax.set_xlabel("Epocha")
+            ax.set_ylabel("Průměrná ztráta")
+            
+            if len(epochs) <= 20:
+                ax.set_xticks(epochs)
+            
             ax.grid(True, linestyle='--', alpha=0.6)
             ax.legend()
             
@@ -331,7 +352,7 @@ if __name__ == "__main__":
         image_dir = './syrova_data'
 
         if not os.path.exists(image_dir):
-            messagebox.showerror("Chyba", f"Adresář '{image_dir}' nebyl nalezen. Vytvořte jej a vložte do něj obrázky .png pro klasifikaci.")
+            messagebox.showerror("Chyba", f"Adresář '{image_dir}' nebyl znalezen. Vytvořte jej a vložte do něj obrázky .png pro klasifikaci.")
             main_tk_root.destroy()
             exit()
 
@@ -343,7 +364,7 @@ if __name__ == "__main__":
 
         image_select_window = Toplevel(main_tk_root)
         image_select_window.title("Výběr obrázku k klasifikaci")
-        image_select_window.geometry("400x350")  # Mírně zvětšeno pro nové tlačítko
+        image_select_window.geometry("400x350")
 
         image_label = tk.Label(image_select_window, text=f"Zvolte obrázek .png z adresáře '{image_dir}':", font=("Arial", 10, "bold"))
         image_label.pack(pady=10)
@@ -372,14 +393,14 @@ if __name__ == "__main__":
         image_button = tk.Button(image_select_window, text="Klasifikovat vybraný obrázek", command=select_image, bg="#008CBA", fg="white")
         image_button.pack(pady=5)
 
-        # NOVÉ: Tlačítko pro všechny obrázky
+        # Tlačítko pro všechny obrázky
         all_images_button = tk.Button(image_select_window, text="Klasifikovat VŠECHNY obrázky v adresáři", command=select_all_images, bg="#4CAF50", fg="white", font=("Arial", 9, "bold"))
         all_images_button.pack(pady=5)
 
         image_select_window.protocol("WM_DELETE_WINDOW", lambda: main_tk_root.destroy())
         main_tk_root.mainloop()
 
-# Rozcestník podle zvoleného režimu
+        # Rozcestník podle zvoleného režimu
         if classify_all_mode[0]:
             # --- REŽIM: HROMADNÁ KLASIFIKACE ---
             main_tk_root.destroy()  # Zavřeme skryté hlavní okno
@@ -394,10 +415,10 @@ if __name__ == "__main__":
                 result = classify_image(model, full_path, device, transform, class_names)
                 if result:
                     prediction, confidence = result
-                    # Zde je ta změna: šířka 3 (doleva) a šířka 7 (doprava)
+                    # Změna: šířka 3 (vlevo) a šířka 7 (vpravo) pro perfektní srovnání svislých čar
                     print(f"{prediction:<3} | {f'{confidence:.2f}%':>7} | {file_name:<40}") 
                 else:
-                    # Zde také, pro případ chyby (zkráceno na 'ERR')
+                    # Formátování pro případ chyby (zkráceno na 'ERR')
                     print(f"{'ERR':<3} | {'N/A':>7} | {file_name:<40}") 
         else:
             # --- REŽIM: JEDEN OBRÁZEK (Původní chování) ---
