@@ -205,22 +205,24 @@ if __name__ == "__main__":
         details_window = Toplevel(main_tk_root)
         details_window.title(f"Detail modelu: {model_filename}")
         
-        # Flexibilní velikost okna podle přítomnosti dat pro graf
+        # Nastavení velikosti okna pro nové proporce
         if loss_data:
-            details_window.geometry("850x500")
+            # Širší okno pro zobrazení textu a výrazně širšího grafu
+            details_window.geometry("1200x600") 
         else:
-            details_window.geometry("450x500")
+            # Užší okno, pokud není graf
+            details_window.geometry("500x500") 
         
-        # Hlavní rozřazovací rámec
+        # Hlavní rozřazovací rámec s grid layoutem pro kontrolu proporcí
         main_frame = tk.Frame(details_window)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        left_frame = tk.Frame(main_frame, width=350)
-        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
         # Levá část: Textové info z MD
+        left_frame = tk.Frame(main_frame)
+        left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5)) # Přidáno vodorovné odsazení
+        
         lbl_info = tk.Label(left_frame, text="Statistiky trénování modelu:", font=("Arial", 10, "bold"))
-        lbl_info.pack(anchor="w")
+        lbl_info.pack(anchor="w", fill=tk.X) # Fill horizontally
         
         txt_scroll = tk.Scrollbar(left_frame)
         txt_scroll.pack(side=tk.RIGHT, fill=tk.Y)
@@ -233,10 +235,11 @@ if __name__ == "__main__":
         
         # Pravá část: Matplotlib Graf ztráty (pouze pokud máme data)
         if loss_data:
-            right_frame = tk.Frame(main_frame, width=450)
-            right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(10, 0))
+            right_frame = tk.Frame(main_frame)
+            right_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0)) # Přidáno vodorovné odsazení
             
-            fig = Figure(figsize=(5, 4), dpi=100)
+            # Matplotlib Figure: Upravená figsize pro širší graf
+            fig = Figure(figsize=(10, 5), dpi=100) # Např. 1000px široký, 500px vysoký
             ax = fig.add_subplot(111)
             ax.plot(loss_data, marker='.', color='#FF5722', label='Loss')
             ax.set_title("Průběh Ztráty (Loss History)")
@@ -249,6 +252,15 @@ if __name__ == "__main__":
             canvas.draw()
             canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
             
+            # Konfigurace vah sloupců pro rozložení textu a grafu
+            main_frame.grid_columnconfigure(0, weight=1) # Sloupec pro text (levý)
+            main_frame.grid_columnconfigure(1, weight=5) # Sloupec pro graf (pravý) - 5x širší
+        else:
+            # Pokud není graf, textová část zabere celou šířku
+            main_frame.grid_columnconfigure(0, weight=1)
+            
+        main_frame.grid_rowconfigure(0, weight=1) # Jediný řádek se roztáhne vertikálně
+        
         # Spodní část: Tlačítka akcí
         btn_frame = tk.Frame(details_window)
         btn_frame.pack(fill=tk.X, pady=10)
