@@ -71,9 +71,6 @@ class PrumyslovaSit(nn.Module):
         x = self.fc2(x)
         return x
 
-# PŮVODNÍ STATICKÁ TRANSFORMACE BYLA ODSTRANĚNA.
-# Vytvoří se dynamicky níže podle načteného souboru s modelem.
-
 
 # --- 3. Funkce pro klasifikaci jednoho obrázku ---
 def classify_image(model, image_path, device, transform, class_names):
@@ -108,24 +105,27 @@ def parse_md_file(md_path):
     losses = []
     
     if not os.path.exists(md_path):
-        return "K tomuto modelu nebyl nalezen .md soubor s vyhodnocením.", []
+        return "K tomuto modelu nebyl znalezen .md soubor s vyhodnocením.", []
 
     try:
         with open(md_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
 
         for line in lines:
+            # Extrakce historie ztrát pro graf
             if "|" in line:
-                if "Epocha" in line or "---" in line:
-                    continue
-                parts = [p.strip() for p in line.split("|") if p.strip()]
-                if len(parts) >= 3:
-                    try:
-                        loss_val = float(parts[2])
-                        losses.append(loss_val)
-                    except ValueError:
-                        pass
+                if "Epocha" in line or "---" in line or "Počet epoch" in line or "Velikost" in line or "Úspěšnost" in line:
+                    pass
+                else:
+                    parts = [p.strip() for p in line.split("|") if p.strip()]
+                    if len(parts) >= 3:
+                        try:
+                            loss_val = float(parts[2])
+                            losses.append(loss_val)
+                        except ValueError:
+                            pass
             
+            # Formátování textového výstupu pro okno detailů
             if line.startswith("#"):
                 text_info += line.replace("#", "").strip() + "\n" + "="*30 + "\n"
             elif "|" in line:
@@ -146,6 +146,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Používám zařízení: {device}")
 
+    # Index 0 odpovídá třídě 0 (v npy souboru typicky BAD), index 1 odpovídá třídě 1 (OK)
     class_names = {0: "BAD", 1: "OK"}
 
     main_tk_root = tk.Tk()
@@ -308,10 +309,8 @@ if __name__ == "__main__":
 
     model = PrumyslovaSit().to(device)
     try:
-        # --- ČISTÁ ZMĚNA ZDE: Načítáme checkpoint slovník a extrahujeme hodnoty ---
         checkpoint = torch.load(model_path, map_location=device)
         
-        # Kontrola, zda jde o nový typ checkpointu se statistikami
         if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
             model.load_state_dict(checkpoint['state_dict'])
             loaded_mean = checkpoint['mean']
@@ -319,12 +318,10 @@ if __name__ == "__main__":
             print(f"\nModel '{model_name}' úspěšně načten.")
             print(f"Načtená normalizační data z modelu -> Průměr: {loaded_mean:.4f}, Odchylka: {loaded_std:.4f}")
         else:
-            # Fallback pro případ, že byste omylem načetli nějaký starý model (než je přepíšete novými)
             model.load_state_dict(checkpoint)
             loaded_mean, loaded_std = 0.5, 0.5
             print(f"\nUpozornění: Načten starý formát modelu '{model_name}'. Používám nouzovou normalizaci (0.5, 0.5).")
 
-        # Dynamické vytvoření transformace na základě právě načtených hodnot
         transform = transforms.Compose([
             transforms.Resize((256, 256)),
             transforms.ToTensor(),
