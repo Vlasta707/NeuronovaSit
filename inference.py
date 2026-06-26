@@ -437,7 +437,8 @@ if __name__ == "__main__":
             x = (screen_width // 2) - (window_width // 2)
             y = (screen_height // 2) - (window_height // 2)
             
-            image_display_window.geometry(f"+{x}+{y}")
+            # Explicitně nastavíme šířku, výšku a pozici obrázku modelu najednou
+            image_display_window.geometry(f"{window_width}x{window_height}+{x}+{y}")
 
             image_display_window.protocol("WM_DELETE_WINDOW", close_display)
             main_tk_root.mainloop()
