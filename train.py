@@ -255,9 +255,10 @@ if __name__ == "__main__":
     accuracy, correct, total = test(model, test_loader)
 
     # --- 7. Uložení natrénovaného modelu a statistik do Markdownu ---
-    save_decision = input("\nUložit model? (Ano/Ne): ").lower()
+    # Upraveno pro použití funkce get_param pro konzistentní interaktivní vstup
+    save_decision = get_param('Uložit model? (A/N)', 'a', is_text=True)
 
-    if save_decision in ['ano', 'y']:
+    if save_decision == 'a': # Změněno z ['ano', 'y'] na 'a'
         model_name = input("Zadejte jméno souboru pro model (bez přípony, např. 'muj_prvni_model'): ").strip()
 
         if model_name:
