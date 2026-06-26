@@ -55,25 +55,44 @@ print("Načítám připravená data z .npy souborů...")
 class PrumyslovaSit(nn.Module):
     def __init__(self):
         super(PrumyslovaSit, self).__init__()
+        # 1. konvoluční blok (vstup: 1 kanál -> výstup: 32 kanálů)
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
-        self.bn1 = nn.BatchNorm2d(32)  # <-- NOVÉ: Normalizace
+        self.bn1 = nn.BatchNorm2d(32)
         
+        # Společný pooling (zmenšuje rozměr feature mapy na polovinu)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
         
+        # 2. konvoluční blok (vstup: 32 kanálů -> výstup: 64 kanálů)
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
-        self.bn2 = nn.BatchNorm2d(64)  # <-- NOVÉ: Normalizace
+        self.bn2 = nn.BatchNorm2d(64)
         
+        # === NOVÁ VRSTVA: 3. konvoluční blok (vstup: 64 kanálů -> výstup: 64 kanálů) ===
+        # padding=1 a kernel_size=3 zajišťují, že konvoluce zachová prostorový rozměr (změnu provede až pool)
+        self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
+        self.bn3 = nn.BatchNorm2d(64)
+        
+        # Plně propojené (fully connected) vrstvy
+        # Výsledný rozměr po 3x poolingu: 256 / 2 / 2 / 2 = 32 -> 64 * 32 * 32 zůstává ZACHOVÁN
         self.fc1 = nn.Linear(64 * 32 * 32, 128)
         self.fc2 = nn.Linear(128, 2)
         
-        self.relu = nn.LeakyReLU(0.1)  # <-- ZMĚNA: Pokročilejší aktivace místo nn.ReLU()
-        self.dropout = nn.Dropout(0.2)  # <-- ZMĚNA: Jemnější dropout pro menší dataset
+        self.relu = nn.LeakyReLU(0.1)
+        self.dropout = nn.Dropout(0.2)
 
     def forward(self, x):
-        x = self.pool(self.relu(self.bn1(self.conv1(x))))  # Přidáno bn1
-        x = self.pool(self.relu(self.bn2(self.conv2(x))))  # Přidáno bn2
-        x = self.pool(x)
+        # 1. blok: Conv -> BN -> LeakyReLU -> Pool (z 256x256 na 128x128)
+        x = self.pool(self.relu(self.bn1(self.conv1(x))))
+        
+        # 2. blok: Conv -> BN -> LeakyReLU -> Pool (z 128x128 na 64x64)
+        x = self.pool(self.relu(self.bn2(self.conv2(x))))
+        
+        # === OPRAVA: 3. blok nyní řádně extrahuje rysy před poolingem (z 64x64 na 32x32) ===
+        x = self.pool(self.relu(self.bn3(self.conv3(x))))
+        
+        # Narovnání (flatten) pro lineární vrstvu
         x = x.view(x.size(0), -1)
+        
+        # Klasifikační hlava
         x = self.relu(self.fc1(x))
         x = self.dropout(x)
         x = self.fc2(x)
