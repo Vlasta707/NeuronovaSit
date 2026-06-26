@@ -386,7 +386,7 @@ if __name__ == "__main__":
             
             print(f"\n--- Spouštím hromadnou klasifikaci adresáře '{image_dir}' ---")
             # Upravené záhlaví s pevnou šířkou pro každý sloupec
-            print(f"{'Třída':<6} | {'Spolehlivost':>12} | {'Jméno souboru':<40}") 
+            print(f"{'Třída':<6} | {'Spolehlivost':>9} | {'Jméno souboru':<40}") 
             print("-" * 64) # Upravená délka čáry na základě celkové šířky sloupců (6+3+12+3+40=64)
             
             for file_name in image_files:
@@ -398,7 +398,7 @@ if __name__ == "__main__":
                     print(f"{prediction:<6} | {f'{confidence:.2f}%':>12} | {file_name:<40}") 
                 else:
                     # Pravé zarovnání 'N/A' na 12 znaků pro selhání
-                    print(f"{'SELHALO':<6} | {'N/A':>12} | {file_name:<40}") 
+                    print(f"{'SELHALO':<6} | {'N/A':>9} | {file_name:<40}") 
         else:
             # --- REŽIM: JEDEN OBRÁZEK (Původní chování) ---
             if not selected_image_container:
