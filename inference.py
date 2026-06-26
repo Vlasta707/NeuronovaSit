@@ -385,19 +385,20 @@ if __name__ == "__main__":
             main_tk_root.destroy()  # Zavřeme skryté hlavní okno
             
             print(f"\n--- Spouštím hromadnou klasifikaci adresáře '{image_dir}' ---")
-            # Upravené záhlaví s pevnou šířkou pro každý sloupec
-            print(f"{'Třída':<6} | {'Spolehlivost':>9} | {'Jméno souboru':<40}") 
-            print("-" * 64) # Upravená délka čáry na základě celkové šířky sloupců (6+3+12+3+40=64)
+            # Upravené záhlaví s pevnou šířkou 9 pro "Spolehlivost" (text bude zkrácen)
+            print(f"{'Třída':<6} | {'Spolehlivost':<9} | {'Jméno souboru':<40}") 
+            # Délka čáry upravena na (6 + 3 + 9 + 3 + 40) = 61
+            print("-" * 61) 
             
             for file_name in image_files:
                 full_path = os.path.join(image_dir, file_name)
                 result = classify_image(model, full_path, device, transform, class_names)
                 if result:
                     prediction, confidence = result
-                    # Pravé zarovnání spolehlivosti na 12 znaků
-                    print(f"{prediction:<6} | {f'{confidence:.2f}%':>12} | {file_name:<40}") 
+                    # Pravé zarovnání spolehlivosti na 9 znaků
+                    print(f"{prediction:<6} | {f'{confidence:.2f}%':>9} | {file_name:<40}") 
                 else:
-                    # Pravé zarovnání 'N/A' na 12 znaků pro selhání
+                    # Pravé zarovnání 'N/A' na 9 znaků pro selhání
                     print(f"{'SELHALO':<6} | {'N/A':>9} | {file_name:<40}") 
         else:
             # --- REŽIM: JEDEN OBRÁZEK (Původní chování) ---
