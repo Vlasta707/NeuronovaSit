@@ -204,27 +204,21 @@ if __name__ == "__main__":
         
         details_window = Toplevel(main_tk_root)
         details_window.title(f"Detail modelu: {model_filename}")
-        # Nastavíme okno jako transientní k hlavnímu root oknu pro lepší interakci se správcem oken
         details_window.transient(main_tk_root)
         
-        # Nastavení velikosti okna pro nové proporce
         if loss_data:
-            # Širší okno pro zobrazení textu a výrazně širšího grafu
             details_window.geometry("1200x600") 
         else:
-            # Užší okno, pokud není graf
             details_window.geometry("500x500") 
         
-        # Hlavní rozřazovací rámec s grid layoutem pro kontrolu proporcí
         main_frame = tk.Frame(details_window)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Levá část: Textové info z MD
         left_frame = tk.Frame(main_frame)
-        left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5)) # Přidáno vodorovné odsazení
+        left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
         
         lbl_info = tk.Label(left_frame, text="Statistiky trénování modelu:", font=("Arial", 10, "bold"))
-        lbl_info.pack(anchor="w", fill=tk.X) # Fill horizontally
+        lbl_info.pack(anchor="w", fill=tk.X)
         
         txt_scroll = tk.Scrollbar(left_frame)
         txt_scroll.pack(side=tk.RIGHT, fill=tk.Y)
@@ -235,13 +229,11 @@ if __name__ == "__main__":
         text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         txt_scroll.config(command=text_area.yview)
         
-        # Pravá část: Matplotlib Graf ztráty (pouze pokud máme data)
         if loss_data:
             right_frame = tk.Frame(main_frame)
-            right_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0)) # Přidáno vodorovné odsazení
+            right_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
             
-            # Matplotlib Figure: Upravená figsize pro širší graf
-            fig = Figure(figsize=(10, 5), dpi=100) # Např. 1000px široký, 500px vysoký
+            fig = Figure(figsize=(10, 5), dpi=100)
             ax = fig.add_subplot(111)
             ax.plot(loss_data, marker='.', color='#FF5722', label='Loss')
             ax.set_title("Průběh Ztráty (Loss History)")
@@ -254,23 +246,20 @@ if __name__ == "__main__":
             canvas.draw()
             canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
             
-            # Konfigurace vah sloupců pro rozložení textu a grafu
-            main_frame.grid_columnconfigure(0, weight=1) # Sloupec pro text (levý)
-            main_frame.grid_columnconfigure(1, weight=5) # Sloupec pro graf (pravý) - 5x širší
+            main_frame.grid_columnconfigure(0, weight=1)
+            main_frame.grid_columnconfigure(1, weight=5)
         else:
-            # Pokud není graf, textová část zabere celou šířku
             main_frame.grid_columnconfigure(0, weight=1)
             
-        main_frame.grid_rowconfigure(0, weight=1) # Jediný řádek se roztáhne vertikálně
+        main_frame.grid_rowconfigure(0, weight=1)
         
-        # Spodní část: Tlačítka akcí
         btn_frame = tk.Frame(details_window)
         btn_frame.pack(fill=tk.X, pady=10)
         
         def on_confirm():
             selected_model_container.append(model_filename)
             details_window.destroy()
-            main_tk_root.quit()  # Ukončí první mainloop
+            main_tk_root.quit()
             
         def on_back():
             details_window.destroy()
@@ -285,9 +274,9 @@ if __name__ == "__main__":
         details_window.protocol("WM_DELETE_WINDOW", lambda: main_tk_root.destroy())
 
         # Centrování okna na obrazovce pomocí tk::PlaceWindow
-        # Důležité: voláme update_idletasks před centrováním, aby okno mělo finální rozměry
         details_window.update_idletasks()
-        details_window.eval(f'tk::PlaceWindow {str(details_window)} center')
+        # Opraveno: Voláme eval na main_tk_root, ne na details_window
+        main_tk_root.eval(f'tk::PlaceWindow {str(details_window)} center')
 
 
     # --- 4.1. Grafický rozcestník výběru modelu ---
