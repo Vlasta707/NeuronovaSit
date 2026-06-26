@@ -112,7 +112,6 @@ def parse_md_file(md_path):
             lines = f.readlines()
 
         for line in lines:
-            # Extrakce historie ztrát pro graf
             if "|" in line:
                 if "Epocha" in line or "---" in line or "Počet epoch" in line or "Velikost" in line or "Úspěšnost" in line:
                     pass
@@ -125,7 +124,6 @@ def parse_md_file(md_path):
                         except ValueError:
                             pass
             
-            # Formátování textového výstupu pro okno detailů
             if line.startswith("#"):
                 text_info += line.replace("#", "").strip() + "\n" + "="*30 + "\n"
             elif "|" in line:
@@ -146,19 +144,14 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Používám zařízení: {device}")
 
-    # Index 0 odpovídá třídě 0 (v npy souboru typicky BAD), index 1 odpovídá třídě 1 (OK)
     class_names = {0: "BAD", 1: "OK"}
 
     main_tk_root = tk.Tk()
-    # main_tk_root je zde inicializován a okamžitě skryt ('withdraw').
-    # Slouží jako neviditelný "dispatcher" pro Toplevel okna.
-    # Umožňuje spouštění a ovládání více nezávislých dialogů (výběr modelu, obrázku, náhled)
-    # pomocí opakovaných volání mainloop(), aniž by se hlavní okno zobrazovalo.
-    # To zabraňuje problémům s Tkinter event loop a životním cyklem oken
     main_tk_root.withdraw()
 
     selected_model_container = []
     selected_image_container = []
+    classify_all_mode = [False]  # Kontejner pro uložení příznaku režimu hromadné klasifikace
 
     last_used_model_path = load_last_model_path()
     last_used_model_filename = os.path.basename(last_used_model_path) if last_used_model_path else None
@@ -301,11 +294,8 @@ if __name__ == "__main__":
     else:
         open_model_selection_window()
 
-    main_tk_root.mainloop() # První mainloop() pro okno výběru/detailu modelu.
-    # Zde se mainloop() spustí a čeká, dokud není okno pro výběr modelu uzavřeno
-    # nebo potvrzeno, což následně volá main_tk_root.quit().
+    main_tk_root.mainloop()
 
-    # --- 4.2. Načtení zvoleného modelu a jeho statistik ---
     if not selected_model_container:
         print("Výběr modelu byl zrušen. Ukončuji skript.")
         main_tk_root.destroy()
@@ -341,7 +331,7 @@ if __name__ == "__main__":
         image_dir = './syrova_data'
 
         if not os.path.exists(image_dir):
-            messagebox.showerror("Chyba", f"Adresář '{image_dir}' nebyl nalezen. Vytvořte jej a vložte do něj obrázky .png pro klasifikaci.")
+            messagebox.showerror("Chyba", f"Adresář '{image_dir}' nebyl znalezen. Vytvořte jej a vložte do něj obrázky .png pro klasifikaci.")
             main_tk_root.destroy()
             exit()
 
@@ -353,7 +343,7 @@ if __name__ == "__main__":
 
         image_select_window = Toplevel(main_tk_root)
         image_select_window.title("Výběr obrázku k klasifikaci")
-        image_select_window.geometry("400x300")
+        image_select_window.geometry("400x350")  # Mírně zvětšeno pro nové tlačítko
 
         image_label = tk.Label(image_select_window, text=f"Zvolte obrázek .png z adresáře '{image_dir}':", font=("Arial", 10, "bold"))
         image_label.pack(pady=10)
@@ -373,76 +363,101 @@ if __name__ == "__main__":
             except IndexError:
                 messagebox.showwarning("Upozornění", "Musíte nejdříve kliknutím vybrat obrázek ze seznamu!")
 
+        def select_all_images():
+            classify_all_mode[0] = True
+            image_select_window.destroy()
+            main_tk_root.quit()
+
+        # Tlačítko pro jeden obrázek
         image_button = tk.Button(image_select_window, text="Klasifikovat vybraný obrázek", command=select_image, bg="#008CBA", fg="white")
-        image_button.pack(pady=10)
+        image_button.pack(pady=5)
+
+        # NOVÉ: Tlačítko pro všechny obrázky
+        all_images_button = tk.Button(image_select_window, text="Klasifikovat VŠECHNY obrázky v adresáři", command=select_all_images, bg="#4CAF50", fg="white", font=("Arial", 9, "bold"))
+        all_images_button.pack(pady=5)
 
         image_select_window.protocol("WM_DELETE_WINDOW", lambda: main_tk_root.destroy())
-        main_tk_root.mainloop() # Druhé mainloop() pro okno výběru obrázku.
-        # Po uzavření okna výběru modelu se spustí druhý mainloop() pro okno výběru obrázku.
-        # Tato sekvence je možná díky tomu, že hlavní root okno (main_tk_root) je skryté.
+        main_tk_root.mainloop()
 
-        if not selected_image_container:
-            print("Výběr obrázku byl zrušen. Ukončuji skript.")
-            main_tk_root.destroy()
-            exit()
-
-        final_image_path = selected_image_container[0]
-
-        print(f"Zobrazení vybraného obrázku: {final_image_path}")
-        try:
-            img = Image.open(final_image_path)
-            max_size = (600, 600)
-            img.thumbnail(max_size, Image.Resampling.LANCZOS)
-
-            image_display_window = Toplevel(main_tk_root)
-            image_display_window.title(f"Vybraný obrázek: {os.path.basename(final_image_path)}")
-
-            img_tk = ImageTk.PhotoImage(img)
-
-            panel = tk.Label(image_display_window, image=img_tk)
-            panel.image = img_tk  
-            panel.pack(padx=10, pady=10)
-
-            def close_display():
-                image_display_window.destroy()
-                main_tk_root.quit()
-
-            close_button = tk.Button(image_display_window, text="Zavřít náhled a pokračovat", command=close_display, bg="#f44336", fg="white", font=("Arial", 10))
-            close_button.pack(pady=10)
-
-            image_display_window.update_idletasks()
-            screen_width = main_tk_root.winfo_screenwidth()
-            screen_height = main_tk_root.winfo_screenheight()
+        # Rozcestník podle zvoleného režimu
+        if classify_all_mode[0]:
+            # --- REŽIM: HROMADNÁ KLASIFIKACE ---
+            main_tk_root.destroy()  # Zavřeme skryté hlavní okno
             
-            window_width = image_display_window.winfo_width()
-            window_height = image_display_window.winfo_height()
+            print(f"\n--- Spouštím hromadnou klasifikaci adresáře '{image_dir}' ---")
+            print(f"{'Jméno souboru':<40} | {'Třída':<6} | {'Spolehlivost':<12}")
+            print("-" * 65)
             
-            x = (screen_width // 2) - (window_width // 2)
-            y = (screen_height // 2) - (window_height // 2)
-            
-            image_display_window.geometry(f"+{x}+{y}")
-
-            image_display_window.protocol("WM_DELETE_WINDOW", close_display)
-            main_tk_root.mainloop() # Třetí mainloop() pro okno náhledu obrázku.
-            # Podobně jako předchozí mainloop(), toto volání čeká na uzavření
-            # náhledu obrázku před pokračováním ve skriptu.
-            # main_tk_root.quit() v close_display() ukončí tento mainloop().
-
-        except Exception as e:
-            print(f"Chyba při zobrazení obrázku: {e}")
-
-        main_tk_root.destroy() # Zničení hlavního root okna po dokončení všech interakcí.
-
-        # --- 4.4. Spuštění klasifikace ---
-        result = classify_image(model, final_image_path, device, transform, class_names)
-
-        if result:
-            prediction, confidence = result
-            print(f"\nPredikce pro obrázek '{final_image_path}':")
-            print(f"Třída: {prediction}")
-            print(f"Spolehlivost (Confidence): {confidence:.2f}%")
+            for file_name in image_files:
+                full_path = os.path.join(image_dir, file_name)
+                result = classify_image(model, full_path, device, transform, class_names)
+                if result:
+                    prediction, confidence = result
+                    print(f"{file_name:<40} | {prediction:<6} | {confidence:.2f}%")
+                else:
+                    print(f"{file_name:<40} | SELHALO")
+                    
         else:
-            print("Klasifikace obrázku selhala.")
+            # --- REŽIM: JEDEN OBRÁZEK (Původní chování) ---
+            if not selected_image_container:
+                print("Výběr obrázku byl zrušen. Ukončuji skript.")
+                main_tk_root.destroy()
+                exit()
+
+            final_image_path = selected_image_container[0]
+
+            print(f"Zobrazení vybraného obrázku: {final_image_path}")
+            try:
+                img = Image.open(final_image_path)
+                max_size = (600, 600)
+                img.thumbnail(max_size, Image.Resampling.LANCZOS)
+
+                image_display_window = Toplevel(main_tk_root)
+                image_display_window.title(f"Vybraný obrázek: {os.path.basename(final_image_path)}")
+
+                img_tk = ImageTk.PhotoImage(img)
+
+                panel = tk.Label(image_display_window, image=img_tk)
+                panel.image = img_tk  
+                panel.pack(padx=10, pady=10)
+
+                def close_display():
+                    image_display_window.destroy()
+                    main_tk_root.quit()
+
+                close_button = tk.Button(image_display_window, text="Zavřít náhled a pokračovat", command=close_display, bg="#f44336", fg="white", font=("Arial", 10))
+                close_button.pack(pady=10)
+
+                image_display_window.update_idletasks()
+                screen_width = main_tk_root.winfo_screenwidth()
+                screen_height = main_tk_root.winfo_screenheight()
+                
+                window_width = image_display_window.winfo_width()
+                window_height = image_display_window.winfo_height()
+                
+                x = (screen_width // 2) - (window_width // 2)
+                y = (screen_height // 2) - (window_height // 2)
+                
+                image_display_window.geometry(f"+{x}+{y}")
+
+                image_display_window.protocol("WM_DELETE_WINDOW", close_display)
+                main_tk_root.mainloop()
+
+            except Exception as e:
+                print(f"Chyba při zobrazení obrázku: {e}")
+
+            main_tk_root.destroy()
+
+            # Spuštění klasifikace pro jeden obrázek
+            result = classify_image(model, final_image_path, device, transform, class_names)
+
+            if result:
+                prediction, confidence = result
+                print(f"\nPredikce pro obrázek '{final_image_path}':")
+                print(f"Třída: {prediction}")
+                print(f"Spolehlivost (Confidence): {confidence:.2f}%")
+            else:
+                print("Klasifikace obrázku selhala.")
 
     except Exception as e:
         print(f"Chyba při načítání nebo použití modelu: {e}")
