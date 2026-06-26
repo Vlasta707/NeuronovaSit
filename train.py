@@ -32,54 +32,29 @@ class VLISTDataset(torch.utils.data.Dataset):
         return image, label
 
 # --- 2. Nastavení transformací a DataLoaderů ---
-# Původní předdefinované `train_transform` a `test_transform` byly odstraněny,
-# protože jsou dynamicky vytvořeny později na základě uživatelského vstupu a vypočtených statistik.
-
-# Funkce pro výpočet průměru a směrodatné odchylky datasetu pro normalizaci
 def calculate_dataset_stats(image_data_path, label_data_path):
     print("Vypočítávám průměr a směrodatnou odchylku pro normalizaci z trénovacích dat...")
-    
-    # Dočasná transformace jen pro převod na tensor a škálování na [0, 1]
-    # Bez normalizace, aby se statistiky počítaly na reálných hodnotách (0-1)
-    temp_transform = transforms.Compose([
-        transforms.ToTensor()
-    ])
-    
-    # Dočasný dataset a DataLoader pro výpočet statistik
-    # labels jsou potřeba pro VLISTDataset, i když se nepoužijí pro výpočet statik
+    temp_transform = transforms.Compose([transforms.ToTensor()])
     temp_dataset = VLISTDataset(image_data_path=image_data_path, label_data_path=label_data_path, transform=temp_transform)
-    
-    # Použijeme vyšší batch size pro rychlejší výpočet statistik
-    # num_workers=0 je stabilnější pro jednoúčelové výpočty statistik
     temp_loader = DataLoader(temp_dataset, batch_size=128, shuffle=False, num_workers=0)
 
-    # Inicializace pro kumulaci sum a počtu pixelů
     sum_pixels = 0.0
     sum_sq_pixels = 0.0
     num_pixels = 0
 
     for images, _ in temp_loader:
-        # images shape: (batch_size, channels, height, width)
-        # Pro grayscale images: (batch_size, 1, H, W)
-        
-        # Přesun na CPU pro výpočty, pokud je na GPU (šetří paměť GPU pro model)
         images = images.cpu() 
-        
-        # Zploštění všech pixelů do jednorozměrného tenzoru
-        pixels = images.view(-1) # Všechny pixely ze všech obrázků v batchi
-        
+        pixels = images.view(-1)
         sum_pixels += torch.sum(pixels)
         sum_sq_pixels += torch.sum(pixels ** 2)
-        num_pixels += pixels.numel() # Počet prvků (pixelů) v aktuálním batchi
+        num_pixels += pixels.numel()
 
     if num_pixels == 0:
         print("Upozornění: Dataset neobsahuje žádné pixely pro výpočet statistik. Používám výchozí hodnoty (0.5, 0.5).")
-        return 0.5, 0.5 # Návrat k výchozím hodnotám, pokud nejsou data
+        return 0.5, 0.5
 
     calculated_mean = sum_pixels / num_pixels
-    # Variance = E[X^2] - (E[X])^2
     calculated_variance = (sum_sq_pixels / num_pixels) - (calculated_mean ** 2)
-    # Zabráníme záporné směrodatné odchylce kvůli zaokrouhlovacím chybám (clamp na min. 1e-5)
     calculated_std = torch.sqrt(torch.clamp(calculated_variance, min=1e-5)) 
 
     print(f"Vypočítaný průměr datasetu: {calculated_mean.item():.4f}, Směrodatná odchylka datasetu: {calculated_std.item():.4f}")
@@ -90,24 +65,16 @@ def calculate_dataset_stats(image_data_path, label_data_path):
 class PrumyslovaSit(nn.Module):
     def __init__(self):
         super(PrumyslovaSit, self).__init__()
-        # 1. konvoluční blok (vstup: 1 kanál -> výstup: 32 kanálů)
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
         self.bn1 = nn.BatchNorm2d(32)
-        
-        # Společný pooling (zmenšuje rozměr feature mapy na polovinu)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
         
-        # 2. konvoluční blok (vstup: 32 kanálů -> výstup: 64 kanálů)
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
         self.bn2 = nn.BatchNorm2d(64)
         
-        # === NOVÁ VRSTVA: 3. konvoluční blok (vstup: 64 kanálů -> výstup: 64 kanálů) ===
-        # padding=1 a kernel_size=3 zajišťují, že konvoluce zachová prostorový rozměr (změnu provede až pool)
         self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
         self.bn3 = nn.BatchNorm2d(64)
         
-        # Plně propojené (fully connected) vrstvy
-        # Výsledný rozměr po 3x poolingu: 256 / 2 / 2 / 2 = 32 -> 64 * 32 * 32 zůstává ZACHOVÁN
         self.fc1 = nn.Linear(64 * 32 * 32, 128)
         self.fc2 = nn.Linear(128, 2)
         
@@ -115,19 +82,10 @@ class PrumyslovaSit(nn.Module):
         self.dropout = nn.Dropout(0.2)
 
     def forward(self, x):
-        # 1. blok: Conv -> BN -> LeakyReLU -> Pool (z 256x256 na 128x128)
         x = self.pool(self.relu(self.bn1(self.conv1(x))))
-        
-        # 2. blok: Conv -> BN -> LeakyReLU -> Pool (z 128x128 na 64x64)
         x = self.pool(self.relu(self.bn2(self.conv2(x))))
-        
-        # === OPRAVA: 3. blok nyní řádně extrahuje rysy před poolingem (z 64x64 na 32x32) ===
         x = self.pool(self.relu(self.bn3(self.conv3(x))))
-        
-        # Narovnání (flatten) pro lineární vrstvu
         x = x.view(x.size(0), -1)
-        
-        # Klasifikační hlava
         x = self.relu(self.fc1(x))
         x = self.dropout(x)
         x = self.fc2(x)
@@ -140,19 +98,14 @@ model = PrumyslovaSit().to(device)
 print(f"Model byl odeslán na zařízení: {device}")
 
 criterion = nn.CrossEntropyLoss()
-# Původní inicializace optimizeru zde byla odstraněna, protože je ihned přepsána
-# po načtení konfigurace.
 
-# Cesty k datům pro výpočet statistik a pro trénink/testování
 TRAIN_IMAGE_DATA_PATH = './data/vlist_train_images.npy'
 TRAIN_LABEL_DATA_PATH = './data/vlist_train_labels.npy'
 TEST_IMAGE_DATA_PATH = './data/vlist_test_images.npy'
 TEST_LABEL_DATA_PATH = './data/vlist_test_labels.npy'
 
-# PŘED interaktivními prompty vypočítáme průměr a směrodatnou odchylku
 calculated_mean, calculated_std = calculate_dataset_stats(TRAIN_IMAGE_DATA_PATH, TRAIN_LABEL_DATA_PATH)
 
-# --- Nastavení parametrů pro trénování
 if not os.path.exists('train_config.json'):
     with open('train_config.json', 'w') as f:
         json.dump({'epochs': 20, 'lr': 0.001, 'batch_size': 16, 'use_aug': 'a', 'rot': 8, 'h_flip': 0.5, 'v_flip': 0.5, 'cj': 0.1}, f)
@@ -162,7 +115,6 @@ try:
 except Exception:
     config = {'epochs': 20, 'lr': 0.001, 'batch_size': 16, 'use_aug': 'a', 'rot': 8, 'h_flip': 0.5, 'v_flip': 0.5, 'cj': 0.1}
 
-# Pomocná funkce pro bezpečné načítání z konzole
 def get_param(prompt, default, is_int=False, is_text=False):
     while True:
         user_input = input(prompt + f" ({default})? ").strip()
@@ -175,7 +127,6 @@ def get_param(prompt, default, is_int=False, is_text=False):
         except ValueError:
             print("Neplatná hodnota. Zkuste to znovu.")
 
-# --- INTAREKTIVNÍ PROMPTY (NAČÍTÁNÍ) ---
 print("\n--- Nastavení parametrů trénování ---")
 epochs = int(get_param('Zadejte počet epoch', config.get('epochs', 20), is_int=True))
 lr = get_param('Zadejte rychlost optimalizace (LR)', config.get('lr', 0.001))
@@ -185,7 +136,6 @@ print("\n--- Nastavení Data Augmentace ---")
 use_aug = get_param('Chcete použít Data Augmentaci? (A/N)', config.get('use_aug', 'a'), is_text=True)
 use_augmentation = use_aug != 'n'
 
-# Inicializace výchozích hodnot pro případ, že je augmentace vypnutá
 rot, h_flip, v_flip, cj_bright, cj_contrast = 0, 0.0, 0.0, 0.0, 0.0
 
 if use_augmentation:
@@ -195,7 +145,6 @@ if use_augmentation:
     cj_val = get_param('  Intenzita ColorJitter jasu/kontrastu (0.0 - 1.0)', config.get('cj', 0.1))
     cj_bright = cj_contrast = cj_val
 
-# --- ULOŽENÍ AKTUÁLNÍ KONFIGURACE PRO PŘÍŠTĚ ---
 with open('train_config.json', 'w') as f:
     json.dump({
         'epochs': epochs, 'lr': lr, 'batch_size': batch_size, 
@@ -203,7 +152,6 @@ with open('train_config.json', 'w') as f:
         'rot': rot, 'h_flip': h_flip, 'v_flip': v_flip, 'cj': cj_bright
     }, f)
 
-# --- DEFINICE TRANSFORMAČNÍCH PIPELINES ---
 train_transform_list = []
 if use_augmentation:
     if rot > 0: train_transform_list.append(transforms.RandomRotation(rot))
@@ -212,17 +160,14 @@ if use_augmentation:
     if cj_bright > 0: train_transform_list.append(transforms.ColorJitter(brightness=cj_bright, contrast=cj_contrast))
 
 train_transform_list.append(transforms.ToTensor())
-# Použijeme vypočítané hodnoty pro normalizaci
 train_transform_list.append(transforms.Normalize((calculated_mean,), (calculated_std,)))
 
 train_transform = transforms.Compose(train_transform_list)
-# Použijeme vypočítané hodnoty pro normalizaci i u testovací sady
 test_transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((calculated_mean,), (calculated_std,))
 ])
 
-# --- REKAPITULACE V KONZOLI ---
 print("\n" + "="*40)
 print("Konfigurace spuštění:")
 print(f"  Epochy: {epochs}")
@@ -237,8 +182,6 @@ if use_augmentation:
     print(f"    - ColorJitter (b/c): {cj_bright}")
 print("="*40 + "\n")
 
-# --- KONEČNÁ ČÁST SKRIPTU ---
-# Optimalizátor je inicializován zde s načteným learning rate
 optimizer = optim.Adam(model.parameters(), lr=lr)
 
 print("Načítám připravená data z .npy souborů pro trénink a test...") 
@@ -253,7 +196,7 @@ test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 # --- 5. Trénovací cyklus (Training Loop) ---
 def train(model, train_loader, optimizer, criterion, epochs):
     print(f"\nSpouštím trénink na {epochs} epoch...")
-    loss_history = [] # Zde budeme ukládat záznamy o ztrátě
+    loss_history = []
     
     for epoch in range(epochs):
         model.train()
@@ -274,7 +217,6 @@ def train(model, train_loader, optimizer, criterion, epochs):
                 current_loss = running_loss / 5
                 print(f"Epocha: {epoch+1}/{epochs} | Dávka: {batch_idx+1}/{len(train_loader)} | Ztráta (Loss): {current_loss:.4f}")
                 
-                # Uložíme si data pro pozdější export do Markdownu
                 loss_history.append({
                     'epoch': epoch + 1,
                     'batch': batch_idx + 1,
@@ -309,7 +251,6 @@ def test(model, test_loader):
 
 
 if __name__ == "__main__":
-    # Spustíme trénink a zachytíme historii ztrát
     loss_history = train(model, train_loader, optimizer, criterion, epochs=epochs)
     accuracy, correct, total = test(model, test_loader)
 
@@ -328,14 +269,18 @@ if __name__ == "__main__":
             model_filename = f"{base_name}.pth"
             md_filename = f"{base_name}.md"
 
-            # Zajištění existence podadresáře "moje_modely" vzhledem k aktuálnímu adresáři
             output_dir = './moje_modely'
             os.makedirs(output_dir, exist_ok=True)
 
-            # 1. Uložení .pth modelu do podadresáře
+            # --- ČISTÁ ZMĚNA ZDE: Ukládáme komplexní checkpoint slovník ---
             model_path = os.path.join(output_dir, model_filename)
-            torch.save(model.state_dict(), model_path)
-            print(f"Model byl úspěšně uložen do: {model_path}")
+            checkpoint = {
+                'state_dict': model.state_dict(),
+                'mean': calculated_mean,
+                'std': calculated_std
+            }
+            torch.save(checkpoint, model_path)
+            print(f"Model a normalizační data byly úspěšně uloženy do: {model_path}")
 
             # 2. Příprava tabulky historie ztrát (Loss History) v Markdownu
             loss_table_rows = []
