@@ -409,7 +409,7 @@ if __name__ == "__main__":
             max_size = (600, 600)
             img.thumbnail(max_size, Image.Resampling.LANCZOS)
 
-            # Okno náhledu jako Toplevel - teď už Tkinter bezpečně ví, kam image "pyimage" patří!
+            # Okno náhledu jako Toplevel
             image_display_window = Toplevel(main_tk_root)
             image_display_window.title(f"Vybraný obrázek: {os.path.basename(final_image_path)}")
 
@@ -426,11 +426,17 @@ if __name__ == "__main__":
             close_button = tk.Button(image_display_window, text="Zavřít náhled a pokračovat", command=close_display, bg="#f44336", fg="white", font=("Arial", 10))
             close_button.pack(pady=10)
 
-            image_display_window.update_idletasks()
+            # Centrování okna na obrazovce
+            image_display_window.update_idletasks() # Zajistí, že widgety jsou vykresleny a mají správné rozměry
             screen_width = main_tk_root.winfo_screenwidth()
             screen_height = main_tk_root.winfo_screenheight()
-            x = (screen_width // 2) - (image_display_window.winfo_width() // 2)
-            y = (screen_height // 2) - (image_display_window.winfo_height() // 2)
+            
+            window_width = image_display_window.winfo_width()
+            window_height = image_display_window.winfo_height()
+            
+            x = (screen_width // 2) - (window_width // 2)
+            y = (screen_height // 2) - (window_height // 2)
+            
             image_display_window.geometry(f"+{x}+{y}")
 
             image_display_window.protocol("WM_DELETE_WINDOW", close_display)
