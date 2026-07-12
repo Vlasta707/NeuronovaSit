@@ -1,9 +1,9 @@
-# inference.py
 import os
 import torch
+from torchvision import transforms
 
 # Importy našich vlastních modulů
-from parser_utils import load_last_model_path, save_last_model_path, parse_md_file, get_inference_transforms
+from parser_utils import load_last_model_path, save_last_model_path, parse_md_file
 from gui import run_init_gui, show_image_preview
 from model_utils import get_resnet18_model, classify_image
 
@@ -25,14 +25,31 @@ def main():
     # Uložení cesty k modelu pro příště
     save_last_model_path(model_path)
     
-    # 2. Parsování transformací z MD logu sítě
+    # 2. Parsování normalizačních hodnot z MD logu sítě
     md_path = model_path.replace('.pth', '.md')
-    mean, std = parse_md_file(md_path)
-    transform = get_inference_transforms(mean, std)
+    parsed_mean, parsed_std = parse_md_file(md_path)
+    
+    # Ošetření: Pokud parser vrátil pole/seznam pro 3 kanály, vezmeme jen první hodnotu pro černobílý režim
+    if isinstance(parsed_mean, (list, tuple)):
+        mean_val = parsed_mean[0]
+    else:
+        mean_val = parsed_mean if parsed_mean is not None else 0.5
+        
+    if isinstance(parsed_std, (list, tuple)):
+        std_val = parsed_std[0]
+    else:
+        std_val = parsed_std if parsed_std is not None else 0.5
+
+    # Vytvoření 1-kanálové transformace přímo zde (Rozměr 256x256 přesně pro PrumyslovaSit)
+    transform = transforms.Compose([
+        transforms.Resize((256, 256)),
+        transforms.ToTensor(),
+        transforms.Normalize((mean_val,), (std_val,))
+    ])
     
     print(f"[INFO] Běží na zařízení: {device.type.upper()}")
     print(f"[INFO] Načítám model: {os.path.basename(model_path)}")
-    print(f"[INFO] Použitá normalizace -> Mean: {mean}, Std: {std}")
+    print(f"[INFO] Použitá normalizace (1 kanál) -> Mean: {mean_val}, Std: {std_val}")
     
     # 3. Načtení PyTorch modelu
     try:
@@ -56,7 +73,7 @@ def main():
         root.destroy()
         return
 
-    # 4. Spuštění samotné inference (ČISTÝ VÝPIS, ŽÁDNÉ KOPÍROVÁNÍ VIZUÁLŮ)
+    # 4. Spuštění samotné inference
     if bulk_mode:
         # --- REŽIM: HROMADNÁ KLASIFIKACE ---
         root.destroy()
@@ -93,8 +110,8 @@ def main():
         if res:
             pred, conf = res
             print(f"\nVýsledek analýzy pro: {os.path.basename(single_image_path)}")
-            print(f"  Verdikt:  {pred}")
-            print(f"  Jistota:  {conf:.2f}%")
+            print(f"   Verdikt:  {pred}")
+            print(f"   Jistota:  {conf:.2f}%")
 
 if __name__ == "__main__":
     main()
