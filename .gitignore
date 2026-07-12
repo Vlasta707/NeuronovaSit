@@ -5,19 +5,17 @@
 vlist_data/
 syrova_data/
 
-# Zpracovaná data (.npy soubory)
+# Zpracovaná data (.npy soubory) a pojistka pro všechny npy soubory v projektu
 data/
+*.npy
 
 # ==============================================================================
 # 2. VÝSTUPY MODELŮ A KONFIGURACE
 # ==============================================================================
-# PyTorch modely (binární soubory .pth a .pt) a reporty z trénování(.md)
+# PyTorch modely (binární soubory .pth a .pt) a reporty z trénování (.md) v této složce
 moje_modely/
 *.pth
 *.pt
-
-# Výstupní reporty z trénování
-*.md
 
 # Lokální konfigurační soubory a logy
 last_model.txt
@@ -25,7 +23,7 @@ train_config.json
 .prumyslova_sit_app/
 
 # ==============================================================================
-# 3. VÝVOJOVÉ PROSTŘEDÍ A SYSTÉM (Python standard)
+# 3. VÝVOJOVÉ PROSTŘEDÍ A SYSTÉM (Python standard & Linux)
 # ==============================================================================
 # Virtuální prostředí
 venv/
@@ -42,3 +40,7 @@ __pycache__/
 .vscode/
 .idea/
 .ipynb_checkpoints/
+
+# Systémové soubory (Linux / Xubuntu)
+.directory
+.DS_Store
