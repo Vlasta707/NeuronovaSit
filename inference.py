@@ -79,7 +79,8 @@ def main():
         root.destroy()
         
         valid_extensions = ('.png', '.jpg', '.jpeg', '.bmp')
-        image_files = [f for f in os.listdir(image_dir) if f.lower().endswith(valid_extensions)]
+        # ZDE PŘIDÁNO SORTED() PRO ABECEDNÍ POŘADÍ
+        image_files = sorted([f for f in os.listdir(image_dir) if f.lower().endswith(valid_extensions)])
         
         if not image_files:
             print(f"[VAROVÁNÍ] Ve složce '{image_dir}' nebyly nalezeny žádné podporované obrázky.")
