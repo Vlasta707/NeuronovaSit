@@ -79,7 +79,6 @@ def main():
         root.destroy()
         
         valid_extensions = ('.png', '.jpg', '.jpeg', '.bmp')
-        # ZDE PŘIDÁNO SORTED() PRO ABECEDNÍ POŘADÍ
         image_files = sorted([f for f in os.listdir(image_dir) if f.lower().endswith(valid_extensions)])
         
         if not image_files:
@@ -87,19 +86,43 @@ def main():
             return
             
         print(f"\n--- Spouštím hromadnou klasifikaci adresáře '{image_dir}' ---")
-        print(f"{'Predikce':<8} | {'Jistota':<10} | {'Název souboru'}")
-        print("-" * 50)
         
+        # Seznamy pro ukládání výsledků podle predikce
+        ok_results = []
+        bad_results = []
         for file_name in image_files:
             full_path = os.path.join(image_dir, file_name)
             res = classify_image(model, full_path, device, transform, class_names)
             
             if res:
                 pred, conf = res
-                print(f"{pred:<8} | {conf:>8.2f}% | {file_name}")
+                if pred == 'OK':
+                    ok_results.append((pred, conf, file_name))
+                else: # pred == 'BAD'
+                    bad_results.append((pred, conf, file_name))
             else:
-                print(f"{'CHYBA':<8} | {'-':>10} | {file_name}")
+                print(f"[CHYBA] Nepodařilo se zpracovat soubor: {file_name}")
                 
+        # Vypsání výsledků pro OK obrázky
+        if ok_results:
+            print("\n--- Výsledky: OK obrázky ---")
+            print(f"{'Predikce':<8} | {'Jistota':<10} | {'Název souboru'}")
+            print("-" * 50)
+            for pred, conf, file_name in ok_results:
+                print(f"{pred:<8} | {conf:>8.2f}% | {file_name}")
+        else:
+            print("\n--- Žádné obrázky nebyly vyhodnoceny jako OK. ---")
+
+        # Vypsání výsledků pro BAD obrázky
+        if bad_results:
+            print("\n--- Výsledky: BAD obrázky ---")
+            print(f"{'Predikce':<8} | {'Jistota':<10} | {'Název souboru'}")
+            print("-" * 50)
+            for pred, conf, file_name in bad_results:
+                print(f"{pred:<8} | {conf:>8.2f}% | {file_name}")
+        else:
+            print("\n--- Žádné obrázky nebyly vyhodnoceny jako BAD. ---")
+
         print(f"\n[HOTOVO] Analýza složky '{image_dir}' byla dokončena.")
         
     else:
