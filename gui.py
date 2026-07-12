@@ -68,16 +68,39 @@ def run_init_gui(initial_model_path=""):
     entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
     
     def update_graph():
-        """Překreslí graf podle aktuálně zvoleného modelu."""
+        """Překreslí graf podle aktuálně zvoleného modelu s chytřejším hledáním logu."""
         if graph_frame_container[0]:
             graph_frame_container[0].destroy()
             
         current_pth = model_path_var.get()
+        if not current_pth or not os.path.exists(current_pth):
+            return
+            
+        # 1. Pokus: Hledáme .md soubor se stejným názvem jako .pth
         current_md = current_pth.replace('.pth', '.md')
         
+        # 2. Pokus: Pokud neexistuje, zkusíme najít jakýkoliv .md soubor ve stejné složce
+        if not os.path.exists(current_md):
+            model_dir = os.path.dirname(current_pth)
+            model_name_base = os.path.basename(current_pth).replace('.pth', '')
+            
+            if os.path.exists(model_dir):
+                all_files = os.listdir(model_dir)
+                # Hledáme .md soubor, který v sobě má název modelu, nebo prostě jakýkoliv .md soubor
+                md_files = [f for f in all_files if f.lower().endswith('.md')]
+                
+                # Zkusíme najít ten, co obsahuje aspoň část názvu modelu
+                best_match = [f for f in md_files if model_name_base in f]
+                if best_match:
+                    current_md = os.path.join(model_dir, best_match[0])
+                elif md_files:
+                    # Nouzovka: Vezmeme první .md soubor ve složce (např. train.md)
+                    current_md = os.path.join(model_dir, md_files[0])
+
+        # Načtení dat z logu
         data = parse_training_logs(current_md)
         if not data or not data[0]:
-            # Pokud log neexistuje, vytvoříme prázdný placeholder frame
+            # Pokud log opravdu nikde nenašel, zobrazíme placeholder
             graph_frame_container[0] = tk.Frame(root, height=300)
             graph_frame_container[0].pack(fill="both", expand=True, padx=20, pady=10)
             tk.Label(graph_frame_container[0], text="(Pro tento model nebyl nalezen tréninkový .md log s grafem)", fg="gray").pack(pady=100)
@@ -98,9 +121,9 @@ def run_init_gui(initial_model_path=""):
         ax1.set_ylabel('Loss')
         ax1.legend(loc='upper right', fontsize='small')
         ax1.grid(True, linestyle='--', alpha=0.6)
-        ax1.set_title(f"Historie učení: {os.path.basename(current_pth)}", fontsize=10)
+        ax1.set_title(f"Historie učení: {os.path.basename(current_md)}", fontsize=10)
         
-        # Graf pro Accuracy (pokud existuje)
+        # Graf pro Accuracy
         ax2 = fig.add_subplot(212)
         if t_acc and v_acc:
             ax2.plot(epochs, t_acc, 'r--', label='Train Acc')
