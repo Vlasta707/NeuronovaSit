@@ -49,7 +49,15 @@ def run_init_gui(initial_model_path=""):
         if not os.path.exists(model_path_var.get()):
             messagebox.showerror("Chyba", "Vybraný model neexistuje!")
             return
-        path = filedialog.askopenfilename(initialdir=img_initial_dir, filetypes=[("Obrázky", "*.png *.jpg *.jpeg *.bmp")])
+        path = filedialog.askopenfilename(
+            initialdir=img_initial_dir, 
+            filetypes=[
+                ("Všechny podporované obrázky", "*.png *.jpg *.jpeg *.bmp"),
+                ("PNG obrázky", "*.png"),
+                ("JPEG obrázky", "*.jpg *.jpeg"),
+                ("Všechny soubory", "*.*")
+            ]
+        )
         if path:
             selected_image_container[0] = path
             root.quit()
