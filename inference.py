@@ -1,6 +1,23 @@
+Tento skript v současné podobě **nemůžeš** bez úprav použít na model vygenerovaný novým skriptem. Pokud bys ho spustil, buď hned spadne s chybou, nebo (v horším případě) sice poběží, ale bude dávat úplně nesmyslné nebo náhodné výsledky.
+
+Důvody jsou celkem **3 zásadní nekompatibility**:
+
+1. **Architektura sítě (Největší problém):** Na řádku `model = PrumyslovaSit().to(device)` skript vytváří instanci tvé staré původní CNN sítě. Jenže nový model je postaven na architektuře **ResNet18**. PyTorch nedokáže načíst váhy (state_dict) z ResNetu do úplně jiné architektury.
+2. **Počet barevných kanálů:** Tvůj stávající skript načítá obrázek jako černobílý: `.convert('L')` a transformace počítá s 1 kanálem. Předtrénovaný ResNet18 však striktně vyžaduje **RGB (3 kanály)**.
+3. **Formát uložení checkpointu:** Nový trénovací skript pravděpodobně ukládá model odlišným způsobem (např. ukládá čistě jen architekturu nebo upravený slovník), což by mohlo způsobit pád při parsování `checkpoint['state_dict']`.
+
+---
+
+### Jak `inference.py` upravit, aby fungoval s novým ResNet18 modelem?
+
+Zde je upravený kód tvého skriptu. Změnil jsem v něm definici sítě na ResNet18, upravil načítání obrázků na RGB a ošetřil transformace (včetně správné normalizace pro ImageNet, kterou předtrénovaný ResNet vyžaduje).
+
+Celé grafické rozhraní (Tkinter) i logika výpisů pro hromadnou klasifikaci **zůstaly beze změny**.
+
+```python
 import torch
 import torch.nn as nn
-from torchvision import transforms
+from torchvision import transforms, models  # Přidán import models
 from PIL import Image, ImageTk
 import os
 import tkinter as tk
@@ -41,35 +58,14 @@ def save_last_model_path(path):
         print(f"Chyba při ukládání cesty k předchozímu modelu: {e}")
 
 
-# --- 1. Definice architektury CNN ---
-class PrumyslovaSit(nn.Module):
-    def __init__(self):
-        super(PrumyslovaSit, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
-        self.bn1 = nn.BatchNorm2d(32)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-        
-        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
-        self.bn2 = nn.BatchNorm2d(64)
-        
-        self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
-        self.bn3 = nn.BatchNorm2d(64)
-        
-        self.fc1 = nn.Linear(64 * 32 * 32, 128)
-        self.fc2 = nn.Linear(128, 2)
-        
-        self.relu = nn.LeakyReLU(0.1)
-        self.dropout = nn.Dropout(0.2)
-
-    def forward(self, x):
-        x = self.pool(self.relu(self.bn1(self.conv1(x))))
-        x = self.pool(self.relu(self.bn2(self.conv2(x))))
-        x = self.pool(self.relu(self.bn3(self.conv3(x))))
-        x = x.view(x.size(0), -1)
-        x = self.relu(self.fc1(x))
-        x = self.dropout(x)
-        x = self.fc2(x)
-        return x
+# --- 1. Definice architektury CNN (Změněno na ResNet18) ---
+def get_resnet18_model():
+    # Inicializace základního ResNet18 bez vah (váhy načteme ze souboru .pth)
+    model = models.resnet18(weights=None)
+    # Úprava plně propojené vrstvy pro 2 třídy (BAD, OK) stejně jako při trénování
+    num_ftrs = model.fc.in_features
+    model.fc = nn.Linear(num_ftrs, 2)
+    return model
 
 
 # --- 3. Funkce pro klasifikaci jednoho obrázku ---
@@ -79,7 +75,8 @@ def classify_image(model, image_path, device, transform, class_names):
         return None
 
     try:
-        image = Image.open(image_path).convert('L')
+        # ZMĚNA: ResNet vyžaduje 3 kanály (RGB), ne černobílý ('L')
+        image = Image.open(image_path).convert('RGB')
     except Exception as e:
         print(f"Chyba při načítání nebo zpracování obrázku '{image_path}': {e}")
         return None
@@ -102,10 +99,10 @@ def classify_image(model, image_path, device, transform, class_names):
 # --- Pomocné funkce pro načítání dat z .md souboru ---
 def parse_md_file(md_path):
     text_info = ""
-    epoch_losses = {} # Slovník pro ukládání {epocha: [seznam_ztrát]}
+    epoch_losses = {} 
     
     if not os.path.exists(md_path):
-        return "K tomuto modelu nebyl nalezen .md soubor s vyhodnocením.", {}
+        return "K tomuto modelu nebyl znalezen .md soubor s vyhodnocením.", {}
 
     try:
         with open(md_path, 'r', encoding='utf-8') as f:
@@ -119,7 +116,6 @@ def parse_md_file(md_path):
                     parts = [p.strip() for p in line.split("|") if p.strip()]
                     if len(parts) >= 3:
                         try:
-                            # Zpracování čísla epochy (odstranění formátu "1/10" apod.)
                             epoch_part = parts[0].split('/')[0].strip()
                             epoch_num = int(epoch_part)
                             loss_val = float(parts[2])
@@ -142,7 +138,6 @@ def parse_md_file(md_path):
     except Exception as e:
         text_info = f"Chyba při čtení statistik: {e}"
         
-    # Výpočet průměrné ztráty pro každou epochu
     averaged_losses = {}
     for epoch, losses in epoch_losses.items():
         if losses:
@@ -163,7 +158,7 @@ if __name__ == "__main__":
 
     selected_model_container = []
     selected_image_container = []
-    classify_all_mode = [False]  # Kontejner pro uložení příznaku režimu hromadné klasifikace
+    classify_all_mode = [False]  
 
     last_used_model_path = load_last_model_path()
     last_used_model_filename = os.path.basename(last_used_model_path) if last_used_model_path else None
@@ -213,13 +208,11 @@ if __name__ == "__main__":
             right_frame = tk.Frame(main_frame)
             right_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
             
-            # Řazení epoch pro správný průběh grafu
             epochs = sorted(loss_data.keys())
             losses = [loss_data[ep] for ep in epochs]
             
             fig = Figure(figsize=(10, 5), dpi=100)
             ax = fig.add_subplot(111)
-            # Vykreslení průměrných ztrát za epochu
             ax.plot(epochs, losses, marker='o', linestyle='-', color='#FF5722', label='Průměrná Loss za epochu')
             ax.set_title("Průběh Ztráty (Averaged Loss History per Epoch)")
             ax.set_xlabel("Epocha")
@@ -325,25 +318,28 @@ if __name__ == "__main__":
     model_name = selected_model_container[0]
     model_path = os.path.join(MODELS_DIR, model_name)
 
-    model = PrumyslovaSit().to(device)
+    # ZMĚNA: Načítáme ResNet18 architekturu
+    model = get_resnet18_model().to(device)
+    
     try:
         checkpoint = torch.load(model_path, map_location=device)
         
-        if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
-            model.load_state_dict(checkpoint['state_dict'])
-            loaded_mean = checkpoint['mean']
-            loaded_std = checkpoint['std']
-            print(f"\nModel '{model_name}' úspěšně načten.")
-            print(f"Načtená normalizační data z modelu -> Průměr: {loaded_mean:.4f}, Odchylka: {loaded_std:.4f}")
+        # Ošetření různých formátů ukládání (pokud ukládáš přes state_dict nebo rovnou celý slovník)
+        if isinstance(checkpoint, dict):
+            if 'state_dict' in checkpoint:
+                model.load_state_dict(checkpoint['state_dict'])
+            else:
+                model.load_state_dict(checkpoint)
         else:
-            model.load_state_dict(checkpoint)
-            loaded_mean, loaded_std = 0.5, 0.5
-            print(f"\nUpozornění: Načten starý formát modelu '{model_name}'. Používám nouzovou normalizaci (0.5, 0.5).")
+            model = checkpoint # pro případ, že by byl uložen celý objekt modelu
+            
+        print(f"\nModel '{model_name}' úspěšně načten.")
 
+        # ZMĚNA: Standardní normalizace pro ImageNet (3 kanály), kterou ResNet18 vyžaduje
         transform = transforms.Compose([
             transforms.Resize((256, 256)),
             transforms.ToTensor(),
-            transforms.Normalize((loaded_mean,), (loaded_std,))
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
 
         save_last_model_path(model_path)
@@ -389,24 +385,20 @@ if __name__ == "__main__":
             image_select_window.destroy()
             main_tk_root.quit()
 
-        # Tlačítko pro jeden obrázek
         image_button = tk.Button(image_select_window, text="Klasifikovat vybraný obrázek", command=select_image, bg="#008CBA", fg="white")
         image_button.pack(pady=5)
 
-        # Tlačítko pro všechny obrázky
         all_images_button = tk.Button(image_select_window, text="Klasifikovat VŠECHNY obrázky v adresáři", command=select_all_images, bg="#4CAF50", fg="white", font=("Arial", 9, "bold"))
         all_images_button.pack(pady=5)
 
         image_select_window.protocol("WM_DELETE_WINDOW", lambda: main_tk_root.destroy())
         main_tk_root.mainloop()
 
-        # Rozcestník podle zvoleného režimu
         if classify_all_mode[0]:
             # --- REŽIM: HROMADNÁ KLASIFIKACE ---
-            main_tk_root.destroy()  # Zavřeme skryté hlavní okno
+            main_tk_root.destroy()  
             
             print(f"\n--- Spouštím hromadnou klasifikaci adresáře '{image_dir}' ---")
-            # Záhlaví zůstává nezměněno podle zadání
             print(f"{'Třída':<6} | {'Spolehlivost':<9} | {'Jméno souboru':<40}") 
             print("-" * 61) 
             
@@ -415,13 +407,11 @@ if __name__ == "__main__":
                 result = classify_image(model, full_path, device, transform, class_names)
                 if result:
                     prediction, confidence = result
-                    # Změna: šířka 3 (vlevo) a šířka 7 (vpravo) pro perfektní srovnání svislých čar
                     print(f"{prediction:<3} | {f'{confidence:.2f}%':>7} | {file_name:<40}") 
                 else:
-                    # Formátování pro případ chyby (zkráceno na 'ERR')
                     print(f"{'ERR':<3} | {'N/A':>7} | {file_name:<40}") 
         else:
-            # --- REŽIM: JEDEN OBRÁZEK (Původní chování) ---
+            # --- REŽIM: JEDEN OBRÁZEK ---
             if not selected_image_container:
                 print("Výběr obrázku byl zrušen. Ukončuji skript.")
                 main_tk_root.destroy()
@@ -471,7 +461,6 @@ if __name__ == "__main__":
 
             main_tk_root.destroy()
 
-            # Spuštění klasifikace pro jeden obrázek
             result = classify_image(model, final_image_path, device, transform, class_names)
 
             if result:
@@ -488,3 +477,5 @@ if __name__ == "__main__":
             main_tk_root.destroy()
         except:
             pass
+
+```
