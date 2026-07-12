@@ -226,6 +226,12 @@ def train(model, train_loader, optimizer, criterion, epochs):
     print(f"\nSpouštím trénink na {epochs} epoch...")
     loss_history = []
     
+    # Vypočítáme maximální délku pro formát "číslo_dávky/celkový_počet_dávek"
+    # pro zarovnání výpisu.
+    max_digits_in_loader = len(str(len(train_loader)))
+    # Např. pro 1000/1000 to bude 4 + 1 (/) + 4 = 9 znaků.
+    max_batch_info_width = 2 * max_digits_in_loader + 1
+
     for epoch in range(epochs):
         model.train()
         running_loss = 0.0
@@ -243,7 +249,11 @@ def train(model, train_loader, optimizer, criterion, epochs):
             
             if batch_idx % 5 == 4: 
                 current_loss = running_loss / 5
-                print(f"Epocha: {epoch+1}/{epochs} | Dávka: {batch_idx+1}/{len(train_loader)} | Ztráta (Loss): {current_loss:.4f}")
+                # Sestavíme řetězec s informacemi o dávce
+                batch_progress_str = f"{batch_idx+1}/{len(train_loader)}"
+                # Doplníme jej mezerami na pevnou šířku
+                padded_batch_progress = f"{batch_progress_str:<{max_batch_info_width}}"
+                print(f"Epocha: {epoch+1}/{epochs} | Dávka: {padded_batch_progress} | Ztráta (Loss): {current_loss:.4f}")
                 
                 loss_history.append({
                     'epoch': epoch + 1,
