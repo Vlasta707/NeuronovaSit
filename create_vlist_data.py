@@ -3,7 +3,6 @@ from PIL import Image
 import os
 
 # --- Společné nastavení rozlišení ---
-# Zvětšeno z 28x28 na 256x256, aby byly vidět vady na produktech
 IMAGE_WIDTH = 256
 IMAGE_HEIGHT = 256
 OUTPUT_DIR = './data/'
@@ -11,10 +10,7 @@ OUTPUT_DIR = './data/'
 def process_dataset(labels_file_path, image_dir_path, output_name):
     """
     Načte JPG obrázky na základě textového souboru s popisky,
-    převede je do stupňů šedi, zmenší na 256x256 a uloží jako .npy pole.
-    
-    Očekávaný formát řádku v labels souboru: nazev_obrazku.jpg,1 (nebo 0)
-    kde 1 = OK, 0 = BAD
+    převede je do stupňů šedi (1 kanál), zmenší na 256x256 a uloží jako .npy pole.
     """
     if not os.path.exists(labels_file_path):
         print(f"Chyba: Soubor s popisky '{labels_file_path}' nenalezen. Přeskakuji tuto sadu.")
@@ -23,38 +19,51 @@ def process_dataset(labels_file_path, image_dir_path, output_name):
     images_list = []
     labels_list = []
 
+    # Počítadla pro kontrolu distribuce tříd
+    count_ok = 0
+    count_bad = 0
+
     print(f"Začínám zpracování sady podle seznamu: {labels_file_path}...")
     print(f"Hledám obrázky v adresáři: {image_dir_path}")
 
-    # Čtení souboru řádek po řádku
-    with open(labels_file_path, 'r') as f:
+    with open(labels_file_path, 'r', encoding='utf-8') as f:
         for idx, line in enumerate(f, 1):
             line = line.strip()
             
-            # Přeskočit prázdné řádky nebo řádky bez čárky
             if not line or ',' not in line:
                 continue
             
             try:
-                # Rozdělení řádku na název souboru a popisek
+                # Rozdělení řádku a odstranění případných neviditelných mezer
                 filename, label_str = line.split(',')
+                filename = filename.strip()
+                label_str = label_str.strip()
+                
                 filepath = os.path.join(image_dir_path, filename)
 
-                # Kontrola, zda fyzický obrázek existuje na disku
                 if not os.path.exists(filepath):
                     print(f"Upozornění (řádek {idx}): Obrázek {filepath} nenalezen. Přeskakuji.")
                     continue
 
                 # --- Načtení a úprava obrázku ---
                 img = Image.open(filepath)
-                img = img.convert('L') # Převedení na stupně šedi (Grayscale / Luminance)
-                img = img.resize((IMAGE_WIDTH, IMAGE_HEIGHT), Image.Resampling.LANCZOS) # Vysoce kvalitní zmenšení
+                img = img.convert('L') # Ponecháváme 1 kanál (stupně šedi) dle Varianty A
                 
-                # Převod na NumPy pole (hodnoty pixelů 0-255)
+                # UPRAVENO: Použito přímo Image.LANCZOS pro lepší kompatibilitu napříč verzemi PIL
+                img = img.resize((IMAGE_WIDTH, IMAGE_HEIGHT), Image.LANCZOS) 
+                
                 img_array = np.array(img)
                 
                 images_list.append(img_array)
-                labels_list.append(int(label_str))
+                
+                label_val = int(label_str)
+                labels_list.append(label_val)
+
+                # Přičtení do statistiky
+                if label_val == 1:
+                    count_ok += 1
+                elif label_val == 0:
+                    count_bad += 1
 
             except Exception as e:
                 print(f"Chyba na řádku {idx} při zpracování souboru: {e}")
@@ -65,37 +74,35 @@ def process_dataset(labels_file_path, image_dir_path, output_name):
         return
 
     # Převod seznamů na finální NumPy pole
-    vlist_images = np.array(images_list, dtype=np.uint8) # uint8 (0 až 255) šetří místo
-    vlist_labels = np.array(labels_list, dtype=np.int64) # int64 vyžaduje PyTorch pro CrossEntropyLoss
+    vlist_images = np.array(images_list, dtype=np.uint8) 
+    vlist_labels = np.array(labels_list, dtype=np.int64) 
 
-    # Vytvoření výstupní složky, pokud neexistuje
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # Definice cest pro uložení .npy souborů
     images_output_path = os.path.join(OUTPUT_DIR, f'{output_name}_images.npy')
     labels_output_path = os.path.join(OUTPUT_DIR, f'{output_name}_labels.npy')
 
-    # Uložení dat do souborů na disk
     np.save(images_output_path, vlist_images)
     np.save(labels_output_path, vlist_labels)
 
     print("--- Hotovo ---")
     print(f"Obrázky uloženy do: {images_output_path} s tvarem {vlist_images.shape}")
     print(f"Popisky uloženy do: {labels_output_path} s tvarem {vlist_labels.shape}")
+    print(f"Statistika sady -> OK (1): {count_ok}x | BAD (0): {count_bad}x")
     print(f"Párování: 1 = 'OK', 0 = 'BAD'\n")
 
 
 if __name__ == "__main__":
     # 1. Zpracování TRÉNOVACÍ sady
     process_dataset(
-        labels_file_path='./vlist_data/labels.txt',   # Textový soubor s popisy trénovacích dat
-        image_dir_path='./vlist_data/images/',        # Složka s trénovacími .jpg obrázky
-        output_name='vlist_train'                     # Vznikne vlist_train_images.npy a vlist_train_labels.npy
+        labels_file_path='./vlist_data/labels.txt',   
+        image_dir_path='./vlist_data/images/',        
+        output_name='vlist_train'                     
     )
 
     # 2. Zpracování TESTOVACÍ sady
     process_dataset(
-        labels_file_path='./vlist_data/test_labels.txt', # Textový soubor s popisy testovacích dat
-        image_dir_path='./vlist_data/test_images/',     # Složka s testovacími .jpg obrázky
-        output_name='vlist_test'                        # Vznikne vlist_test_images.npy a vlist_test_labels.npy
+        labels_file_path='./vlist_data/test_labels.txt', 
+        image_dir_path='./vlist_data/test_images/',     
+        output_name='vlist_test'                        
     )
