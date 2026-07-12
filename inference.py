@@ -39,11 +39,12 @@ def main():
         model = get_resnet18_model(num_classes=2)
         checkpoint = torch.load(model_path, map_location=device, weights_only=False)
         
-        # Ošetření, zda jde o čistý state_dict nebo celkové uložení
-        if 'model_state_dict' in checkpoint:
-            model.load_state_dict(checkpoint['model_state_dict'])
-        elif isinstance(checkpoint, dict) and any(k.startswith('fc.') or k.startswith('conv1.') for k in checkpoint.keys()):
-            model.load_state_dict(checkpoint)
+        # Ošetření struktury checkpointu
+        if isinstance(checkpoint, dict):
+            if 'model_state_dict' in checkpoint:
+                model.load_state_dict(checkpoint['model_state_dict'])
+            else:
+                model.load_state_dict(checkpoint)
         else:
             model = checkpoint
             
