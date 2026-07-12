@@ -1,7 +1,7 @@
 import os
 import shutil
 
-ZDROJOVA_SLOZKA = "./trenovaci_data"  # Cesta k tvé složce, kde je vše pohromadě
+ZDROJOVA_SLOZKA = "./vlist_data/images"  # Cesta k tvé složce, kde je vše pohromadě
 VYSTUPNI_DATASET = "./dataset"        # Cesta, kam se vytvoří struktura pro nový train.py
 
 # Vytvoření cílových podsložek
