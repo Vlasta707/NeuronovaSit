@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torchvision import transforms, models
+from torchvision import transforms
 from PIL import Image, ImageTk
 import os
 import tkinter as tk
@@ -41,12 +41,35 @@ def save_last_model_path(path):
         print(f"Chyba při ukládání cesty k předchozímu modelu: {e}")
 
 
-# --- 1. Definice architektury CNN (Změněno na ResNet18) ---
-def get_resnet18_model():
-    model = models.resnet18(weights=None)
-    num_ftrs = model.fc.in_features
-    model.fc = nn.Linear(num_ftrs, 2)
-    return model
+# --- 1. Sjednocená architektura CNN (Musí být stejná jako v train.py!) ---
+class PrumyslovaSit(nn.Module):
+    def __init__(self):
+        super(PrumyslovaSit, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm2d(32)
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(64)
+        
+        self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
+        self.bn3 = nn.BatchNorm2d(64)
+        
+        self.fc1 = nn.Linear(64 * 32 * 32, 128)
+        self.fc2 = nn.Linear(128, 2)
+        
+        self.relu = nn.LeakyReLU(0.1)
+        self.dropout = nn.Dropout(0.2)
+
+    def forward(self, x):
+        x = self.pool(self.relu(self.bn1(self.conv1(x))))
+        x = self.pool(self.relu(self.bn2(self.conv2(x))))
+        x = self.pool(self.relu(self.bn3(self.conv3(x))))
+        x = x.view(x.size(0), -1)
+        x = self.relu(self.fc1(x))
+        x = self.dropout(x)
+        x = self.fc2(x)
+        return x
 
 
 # --- 3. Funkce pro klasifikaci jednoho obrázku ---
@@ -56,7 +79,8 @@ def classify_image(model, image_path, device, transform, class_names):
         return None
 
     try:
-        image = Image.open(image_path).convert('RGB')
+        # OPRAVENO: Převod na 'L' (šedotón, 1 kanál), přesně jako v trénování
+        image = Image.open(image_path).convert('L')
     except Exception as e:
         print(f"Chyba při načítání nebo zpracování obrázku '{image_path}': {e}")
         return None
@@ -82,7 +106,7 @@ def parse_md_file(md_path):
     epoch_losses = {} 
     
     if not os.path.exists(md_path):
-        return "K tomuto modelu nebyl nalezen .md soubor s vyhodnocením.", {}
+        return "K tomuto modelu nebyl znalezen .md soubor s vyhodnocením.", {}
 
     try:
         with open(md_path, 'r', encoding='utf-8') as f:
@@ -298,25 +322,34 @@ if __name__ == "__main__":
     model_name = selected_model_container[0]
     model_path = os.path.join(MODELS_DIR, model_name)
 
-    model = get_resnet18_model().to(device)
+    # OPRAVENO: Inicializace správné sítě (PrumyslovaSit místo ResNet)
+    model = PrumyslovaSit().to(device)
     
     try:
         checkpoint = torch.load(model_path, map_location=device)
         
-        if isinstance(checkpoint, dict):
-            if 'state_dict' in checkpoint:
-                model.load_state_dict(checkpoint['state_dict'])
-            else:
-                model.load_state_dict(checkpoint)
+        # OPRAVENO: Dynamické načtení uloženého průměru a odchylky
+        if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+            model.load_state_dict(checkpoint['state_dict'])
+            loaded_mean = checkpoint.get('mean', 0.5)
+            loaded_std = checkpoint.get('std', 0.5)
+            print(f"Načteny normalizační parametry z checkpointu: Mean={loaded_mean:.4f}, Std={loaded_std:.4f}")
         else:
-            model = checkpoint
+            # Záložní varianta, pokud by šlo o starý holý model
+            if isinstance(checkpoint, dict):
+                model.load_state_dict(checkpoint)
+            else:
+                model = checkpoint
+            loaded_mean, loaded_std = 0.5, 0.5
+            print("Upozornění: Normalizační data nenalezena v checkpointu. Používám nouzový střed (0.5, 0.5).")
             
-        print(f"\nModel '{model_name}' úspěšně načten.")
+        print(f"Model '{model_name}' úspěšně načten.")
 
+        # OPRAVENO: Transformace upravena na 1 kanál a dynamické statistiky
         transform = transforms.Compose([
             transforms.Resize((256, 256)),
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            transforms.Normalize((loaded_mean,), (loaded_std,))
         ])
 
         save_last_model_path(model_path)
@@ -325,7 +358,7 @@ if __name__ == "__main__":
         image_dir = './syrova_data'
 
         if not os.path.exists(image_dir):
-            messagebox.showerror("Chyba", f"Adresář '{image_dir}' nebyl znalezen. Vytvořte jej a vložte do něj obrázky .png pro klasifikaci.")
+            messagebox.showerror("Chyba", f"Adresář '{image_dir}' nebyl nalezen. Vytvořte jej a vložte do něj obrázky .png pro klasifikaci.")
             main_tk_root.destroy()
             exit()
 
@@ -384,9 +417,9 @@ if __name__ == "__main__":
                 result = classify_image(model, full_path, device, transform, class_names)
                 if result:
                     prediction, confidence = result
-                    print(f"{prediction:<3} | {f'{confidence:.2f}%':>7} | {file_name:<40}") 
+                    print(f"{prediction:<6} | {f'{confidence:.2f}%':>12} | {file_name:<40}") 
                 else:
-                    print(f"{'ERR':<3} | {'N/A':>7} | {file_name:<40}") 
+                    print(f"{'ERR':<6} | {'N/A':>12} | {file_name:<40}") 
         else:
             # --- REŽIM: JEDEN OBRÁZEK ---
             if not selected_image_container:
