@@ -1,9 +1,15 @@
 # ==============================================================================
 # 1. DATA A STRUKTURY (Lokální a generované soubory)
 # ==============================================================================
-# Syrová lokální data
+# Syrová lokální data a textové anotace/labely
 vlist_data/
 syrova_data/
+trenovaci_data/
+*.txt
+*.csv
+
+# Nová strukturovaná složka pro trénování (OK/BAD podsložky)
+dataset/
 
 # Zpracovaná data (.npy soubory) a pojistka pro všechny npy soubory v projektu
 data/
