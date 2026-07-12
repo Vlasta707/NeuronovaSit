@@ -39,9 +39,11 @@ def main():
         model = get_resnet18_model(num_classes=2)
         checkpoint = torch.load(model_path, map_location=device, weights_only=False)
         
-        # Ošetření struktury checkpointu
+        # Přesné ošetření tvé struktury checkpointu
         if isinstance(checkpoint, dict):
-            if 'model_state_dict' in checkpoint:
+            if 'state_dict' in checkpoint:
+                model.load_state_dict(checkpoint['state_dict'])
+            elif 'model_state_dict' in checkpoint:
                 model.load_state_dict(checkpoint['model_state_dict'])
             else:
                 model.load_state_dict(checkpoint)
