@@ -1,23 +1,6 @@
-Tento skript v současné podobě **nemůžeš** bez úprav použít na model vygenerovaný novým skriptem. Pokud bys ho spustil, buď hned spadne s chybou, nebo (v horším případě) sice poběží, ale bude dávat úplně nesmyslné nebo náhodné výsledky.
-
-Důvody jsou celkem **3 zásadní nekompatibility**:
-
-1. **Architektura sítě (Největší problém):** Na řádku `model = PrumyslovaSit().to(device)` skript vytváří instanci tvé staré původní CNN sítě. Jenže nový model je postaven na architektuře **ResNet18**. PyTorch nedokáže načíst váhy (state_dict) z ResNetu do úplně jiné architektury.
-2. **Počet barevných kanálů:** Tvůj stávající skript načítá obrázek jako černobílý: `.convert('L')` a transformace počítá s 1 kanálem. Předtrénovaný ResNet18 však striktně vyžaduje **RGB (3 kanály)**.
-3. **Formát uložení checkpointu:** Nový trénovací skript pravděpodobně ukládá model odlišným způsobem (např. ukládá čistě jen architekturu nebo upravený slovník), což by mohlo způsobit pád při parsování `checkpoint['state_dict']`.
-
----
-
-### Jak `inference.py` upravit, aby fungoval s novým ResNet18 modelem?
-
-Zde je upravený kód tvého skriptu. Změnil jsem v něm definici sítě na ResNet18, upravil načítání obrázků na RGB a ošetřil transformace (včetně správné normalizace pro ImageNet, kterou předtrénovaný ResNet vyžaduje).
-
-Celé grafické rozhraní (Tkinter) i logika výpisů pro hromadnou klasifikaci **zůstaly beze změny**.
-
-```python
 import torch
 import torch.nn as nn
-from torchvision import transforms, models  # Přidán import models
+from torchvision import transforms, models
 from PIL import Image, ImageTk
 import os
 import tkinter as tk
@@ -60,9 +43,7 @@ def save_last_model_path(path):
 
 # --- 1. Definice architektury CNN (Změněno na ResNet18) ---
 def get_resnet18_model():
-    # Inicializace základního ResNet18 bez vah (váhy načteme ze souboru .pth)
     model = models.resnet18(weights=None)
-    # Úprava plně propojené vrstvy pro 2 třídy (BAD, OK) stejně jako při trénování
     num_ftrs = model.fc.in_features
     model.fc = nn.Linear(num_ftrs, 2)
     return model
@@ -75,7 +56,6 @@ def classify_image(model, image_path, device, transform, class_names):
         return None
 
     try:
-        # ZMĚNA: ResNet vyžaduje 3 kanály (RGB), ne černobílý ('L')
         image = Image.open(image_path).convert('RGB')
     except Exception as e:
         print(f"Chyba při načítání nebo zpracování obrázku '{image_path}': {e}")
@@ -102,7 +82,7 @@ def parse_md_file(md_path):
     epoch_losses = {} 
     
     if not os.path.exists(md_path):
-        return "K tomuto modelu nebyl znalezen .md soubor s vyhodnocením.", {}
+        return "K tomuto modelu nebyl nalezen .md soubor s vyhodnocením.", {}
 
     try:
         with open(md_path, 'r', encoding='utf-8') as f:
@@ -318,24 +298,21 @@ if __name__ == "__main__":
     model_name = selected_model_container[0]
     model_path = os.path.join(MODELS_DIR, model_name)
 
-    # ZMĚNA: Načítáme ResNet18 architekturu
     model = get_resnet18_model().to(device)
     
     try:
         checkpoint = torch.load(model_path, map_location=device)
         
-        # Ošetření různých formátů ukládání (pokud ukládáš přes state_dict nebo rovnou celý slovník)
         if isinstance(checkpoint, dict):
             if 'state_dict' in checkpoint:
                 model.load_state_dict(checkpoint['state_dict'])
             else:
                 model.load_state_dict(checkpoint)
         else:
-            model = checkpoint # pro případ, že by byl uložen celý objekt modelu
+            model = checkpoint
             
         print(f"\nModel '{model_name}' úspěšně načten.")
 
-        # ZMĚNA: Standardní normalizace pro ImageNet (3 kanály), kterou ResNet18 vyžaduje
         transform = transforms.Compose([
             transforms.Resize((256, 256)),
             transforms.ToTensor(),
@@ -477,5 +454,3 @@ if __name__ == "__main__":
             main_tk_root.destroy()
         except:
             pass
-
-```
