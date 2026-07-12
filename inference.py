@@ -1,489 +1,97 @@
-import torch
-import torch.nn as nn
-from torchvision import transforms
-from PIL import Image, ImageTk
+# inference.py
 import os
-import tkinter as tk
-from tkinter import messagebox, Toplevel, ttk
+import torch
 
-import matplotlib
-matplotlib.use("TkAgg")
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
+# Importy našich vlastních modulů
+from parser_utils import load_last_model_path, save_last_model_path, parse_md_file, get_inference_transforms
+from gui import run_init_gui, show_image_preview
+from model_utils import get_resnet18_model, classify_image
 
-# --- Konfigurační cesty pro uložení posledního modelu ---
-CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".prumyslova_sit_app")
-LAST_MODEL_FILE = os.path.join(CONFIG_DIR, "last_model.txt")
-MODELS_DIR = "./moje_modely" 
-
-os.makedirs(MODELS_DIR, exist_ok=True)
-
-def load_last_model_path():
-    if os.path.exists(LAST_MODEL_FILE):
-        try:
-            with open(LAST_MODEL_FILE, 'r') as f:
-                path = f.read().strip()
-                if os.path.exists(path):
-                    return path
-                potential_new_path = os.path.join(MODELS_DIR, os.path.basename(path))
-                if os.path.exists(potential_new_path):
-                    return potential_new_path
-        except Exception as e:
-            print(f"Chyba při načítání cesty k předchozímu modelu: {e}")
-    return None
-
-def save_last_model_path(path):
-    os.makedirs(CONFIG_DIR, exist_ok=True)
-    try:
-        with open(LAST_MODEL_FILE, 'w') as f:
-            f.write(path)
-    except Exception as e:
-        print(f"Chyba při ukládání cesty k předchozímu modelu: {e}")
-
-
-# --- 1. Sjednocená architektura CNN (Musí být stejná jako v train.py!) ---
-class PrumyslovaSit(nn.Module):
-    def __init__(self):
-        super(PrumyslovaSit, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
-        self.bn1 = nn.BatchNorm2d(32)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-        
-        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
-        self.bn2 = nn.BatchNorm2d(64)
-        
-        self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
-        self.bn3 = nn.BatchNorm2d(64)
-        
-        self.fc1 = nn.Linear(64 * 32 * 32, 128)
-        self.fc2 = nn.Linear(128, 2)
-        
-        self.relu = nn.LeakyReLU(0.1)
-        self.dropout = nn.Dropout(0.2)
-
-    def forward(self, x):
-        x = self.pool(self.relu(self.bn1(self.conv1(x))))
-        x = self.pool(self.relu(self.bn2(self.conv2(x))))
-        x = self.pool(self.relu(self.bn3(self.conv3(x))))
-        x = x.view(x.size(0), -1)
-        x = self.relu(self.fc1(x))
-        x = self.dropout(x)
-        x = self.fc2(x)
-        return x
-
-
-# --- 3. Funkce pro klasifikaci jednoho obrázku ---
-def classify_image(model, image_path, device, transform, class_names):
-    if not os.path.exists(image_path):
-        print(f"Chyba: Soubor obrázku '{image_path}' nebyl nalezen.")
-        return None
-
-    try:
-        # OPRAVENO: Převod na 'L' (šedotón, 1 kanál), přesně jako v trénování
-        image = Image.open(image_path).convert('L')
-    except Exception as e:
-        print(f"Chyba při načítání nebo zpracování obrázku '{image_path}': {e}")
-        return None
-
-    image_tensor = transform(image).unsqueeze(0)
-    image_tensor = image_tensor.to(device)
-
-    model.eval()
-    with torch.no_grad():
-        output = model(image_tensor)
-        probabilities = torch.softmax(output, dim=1)
-        predicted_prob, predicted_idx = torch.max(probabilities, 1)
-
-    prediction = class_names[predicted_idx.item()]
-    confidence = predicted_prob.item() * 100
-
-    return prediction, confidence
-
-
-# --- Pomocné funkce pro načítání dat z .md souboru ---
-def parse_md_file(md_path):
-    text_info = ""
-    epoch_losses = {} 
-    
-    if not os.path.exists(md_path):
-        return "K tomuto modelu nebyl znalezen .md soubor s vyhodnocením.", {}
-
-    try:
-        with open(md_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-
-        for line in lines:
-            if "|" in line:
-                if "Epocha" in line or "---" in line or "Počet epoch" in line or "Velikost" in line or "Úspěšnost" in line:
-                    pass
-                else:
-                    parts = [p.strip() for p in line.split("|") if p.strip()]
-                    if len(parts) >= 3:
-                        try:
-                            epoch_part = parts[0].split('/')[0].strip()
-                            epoch_num = int(epoch_part)
-                            loss_val = float(parts[2])
-                            
-                            if epoch_num not in epoch_losses:
-                                epoch_losses[epoch_num] = []
-                            epoch_losses[epoch_num].append(loss_val)
-                        except ValueError:
-                            pass
-            
-            if line.startswith("#"):
-                text_info += line.replace("#", "").strip() + "\n" + "="*30 + "\n"
-            elif "|" in line:
-                if "---" in line: continue
-                parts = [p.strip() for p in line.split("|") if p.strip()]
-                text_info += "  ".join(parts).replace("**", "") + "\n"
-            else:
-                text_info += line.replace("**", "")
-                
-    except Exception as e:
-        text_info = f"Chyba při čtení statistik: {e}"
-        
-    averaged_losses = {}
-    for epoch, losses in epoch_losses.items():
-        if losses:
-            averaged_losses[epoch] = sum(losses) / len(losses)
-            
-    return text_info, averaged_losses
-
-
-# --- 4. Hlavní část skriptu ---
-if __name__ == "__main__":
+def main():
+    class_names = ['BAD', 'OK']
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Používám zařízení: {device}")
-
-    class_names = {0: "BAD", 1: "OK"}
-
-    main_tk_root = tk.Tk()
-    main_tk_root.withdraw()
-
-    selected_model_container = []
-    selected_image_container = []
-    classify_all_mode = [False]  
-
-    last_used_model_path = load_last_model_path()
-    last_used_model_filename = os.path.basename(last_used_model_path) if last_used_model_path else None
-
-    model_filenames_in_listbox = sorted([f for f in os.listdir(MODELS_DIR) if f.endswith('.pth') or f.endswith('.pt')])
-
-    if not model_filenames_in_listbox:
-        messagebox.showerror("Chyba", f"V adresáři '{MODELS_DIR}' nebyly nalezeny žádné modely (.pth/.pt)!")
-        main_tk_root.destroy()
-        exit()
-
-    def show_model_details_and_confirm(model_filename):
-        base_name = os.path.splitext(model_filename)[0]
-        md_filename = f"{base_name}.md"
-        md_path = os.path.join(MODELS_DIR, md_filename)
-        
-        text_info, loss_data = parse_md_file(md_path)
-        
-        details_window = Toplevel(main_tk_root)
-        details_window.title(f"Detail modelu: {model_filename}")
-        details_window.transient(main_tk_root)
-        
-        if loss_data:
-            details_window.geometry("1200x600") 
-        else:
-            details_window.geometry("500x500") 
-        
-        main_frame = tk.Frame(details_window)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        left_frame = tk.Frame(main_frame)
-        left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
-        
-        lbl_info = tk.Label(left_frame, text="Statistiky trénování modelu:", font=("Arial", 10, "bold"))
-        lbl_info.pack(anchor="w", fill=tk.X)
-        
-        txt_scroll = tk.Scrollbar(left_frame)
-        txt_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        text_area = tk.Text(left_frame, wrap=tk.WORD, yscrollcommand=txt_scroll.set, font=("Consolas", 9))
-        text_area.insert(tk.END, text_info)
-        text_area.config(state=tk.DISABLED)
-        text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        txt_scroll.config(command=text_area.yview)
-        
-        if loss_data:
-            right_frame = tk.Frame(main_frame)
-            right_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
-            
-            epochs = sorted(loss_data.keys())
-            losses = [loss_data[ep] for ep in epochs]
-            
-            fig = Figure(figsize=(10, 5), dpi=100)
-            ax = fig.add_subplot(111)
-            ax.plot(epochs, losses, marker='o', linestyle='-', color='#FF5722', label='Průměrná Loss za epochu')
-            ax.set_title("Průběh Ztráty (Averaged Loss History per Epoch)")
-            ax.set_xlabel("Epocha")
-            ax.set_ylabel("Průměrná ztráta")
-            
-            if len(epochs) <= 20:
-                ax.set_xticks(epochs)
-            
-            ax.grid(True, linestyle='--', alpha=0.6)
-            ax.legend()
-            
-            canvas = FigureCanvasTkAgg(fig, master=right_frame)
-            canvas.draw()
-            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-            
-            main_frame.grid_columnconfigure(0, weight=1)
-            main_frame.grid_columnconfigure(1, weight=5)
-        else:
-            main_frame.grid_columnconfigure(0, weight=1)
-            
-        main_frame.grid_rowconfigure(0, weight=1)
-        
-        btn_frame = tk.Frame(details_window)
-        btn_frame.pack(fill=tk.X, pady=10)
-        
-        def on_confirm():
-            selected_model_container.append(model_filename)
-            details_window.destroy()
-            main_tk_root.quit()
-            
-        def on_back():
-            details_window.destroy()
-            open_model_selection_window()
-            
-        btn_confirm = tk.Button(btn_frame, text="Ponechat tento model", command=on_confirm, bg="#4CAF50", fg="white", font=("Arial", 10, "bold"), padx=10, pady=5)
-        btn_confirm.pack(side=tk.RIGHT, padx=20)
-        
-        btn_back = tk.Button(btn_frame, text="Zpět na volbu modelu", command=on_back, bg="#f44336", fg="white", font=("Arial", 10), padx=10, pady=5)
-        btn_back.pack(side=tk.LEFT, padx=20)
-        
-        details_window.protocol("WM_DELETE_WINDOW", lambda: main_tk_root.destroy())
-        details_window.update_idletasks()
-        main_tk_root.eval(f'tk::PlaceWindow {str(details_window)} center')
-
-
-    def open_model_selection_window():
-        model_select_window = Toplevel(main_tk_root)
-        model_select_window.title("Výběr modelu sítě")
-        model_select_window.geometry("380x320")
-
-        label = tk.Label(model_select_window, text="Zvolte soubor natrénovaného modelu:", font=("Arial", 10, "bold"))
-        label.pack(pady=10)
-
-        listbox = tk.Listbox(model_select_window, width=45, height=8)
-        for i, file in enumerate(model_filenames_in_listbox):
-            listbox.insert(tk.END, f"{file} - {i+1}")
-        listbox.pack(pady=5)
-
-        if last_used_model_filename and last_used_model_filename in model_filenames_in_listbox:
-            idx = model_filenames_in_listbox.index(last_used_model_filename)
-            listbox.selection_set(idx)
-            listbox.activate(idx)
-
-        def proceed_with_selection(use_last):
-            if use_last:
-                chosen = last_used_model_filename
-            else:
-                try:
-                    selection_index = listbox.curselection()[0]
-                    chosen = model_filenames_in_listbox[selection_index]
-                except IndexError:
-                    messagebox.showwarning("Upozornění", "Musíte nejdříve kliknutím vybrat model ze seznamu!")
-                    return
-            
-            model_select_window.destroy()
-            show_model_details_and_confirm(chosen)
-
-        button = tk.Button(model_select_window, text="Zobrazit detaily vybraného modelu", command=lambda: proceed_with_selection(False), bg="#008CBA", fg="white")
-        button.pack(pady=10)
-
-        if last_used_model_filename and last_used_model_filename in model_filenames_in_listbox:
-            default_button = tk.Button(
-                model_select_window, text=f"Zobrazit předchozí: {last_used_model_filename}",
-                command=lambda: proceed_with_selection(True), bg="#e7e7e7", fg="black"
-            )
-            default_button.pack(pady=5)
-            
-        model_select_window.protocol("WM_DELETE_WINDOW", lambda: main_tk_root.destroy())
-
-
-    if last_used_model_filename and last_used_model_filename in model_filenames_in_listbox:
-        show_model_details_and_confirm(last_used_model_filename)
-    else:
-        open_model_selection_window()
-
-    main_tk_root.mainloop()
-
-    if not selected_model_container:
-        print("Výběr modelu byl zrušen. Ukončuji skript.")
-        main_tk_root.destroy()
-        exit()
-
-    model_name = selected_model_container[0]
-    model_path = os.path.join(MODELS_DIR, model_name)
-
-    # OPRAVENO: Inicializace správné sítě (PrumyslovaSit místo ResNet)
-    model = PrumyslovaSit().to(device)
     
+    # 1. Načtení historie a spuštění úvodního GUI
+    last_model = load_last_model_path()
+    root, model_path, bulk_mode, image_dir, single_image_path = run_init_gui(last_model)
+    
+    # Pokud uživatel zavřel okno křížkem bez akce
+    if not model_path or (not bulk_mode and not single_image_path):
+        print("[INFO] Skript ukončen uživatelem.")
+        try: root.destroy()
+        except: pass
+        return
+
+    # Uložení cesty k modelu pro příště
+    save_last_model_path(model_path)
+    
+    # 2. Parsování transformací z MD logu sítě
+    md_path = model_path.replace('.pth', '.md')
+    mean, std = parse_md_file(md_path)
+    transform = get_inference_transforms(mean, std)
+    
+    print(f"[INFO] Běží na zařízení: {device.type.upper()}")
+    print(f"[INFO] Načítám model: {os.path.basename(model_path)}")
+    print(f"[INFO] Použitá normalizace -> Mean: {mean}, Std: {std}")
+    
+    # 3. Načtení PyTorch modelu
     try:
-        checkpoint = torch.load(model_path, map_location=device)
+        model = get_resnet18_model(num_classes=2)
+        checkpoint = torch.load(model_path, map_location=device, weights_only=False)
         
-        # OPRAVENO: Dynamické načtení uloženého průměru a odchylky
-        if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
-            model.load_state_dict(checkpoint['state_dict'])
-            loaded_mean = checkpoint.get('mean', 0.5)
-            loaded_std = checkpoint.get('std', 0.5)
-            print(f"Načteny normalizační parametry z checkpointu: Mean={loaded_mean:.4f}, Std={loaded_std:.4f}")
+        # Ošetření, zda jde o čistý state_dict nebo celkové uložení
+        if 'model_state_dict' in checkpoint:
+            model.load_state_dict(checkpoint['model_state_dict'])
+        elif isinstance(checkpoint, dict) and any(k.startswith('fc.') or k.startswith('conv1.') for k in checkpoint.keys()):
+            model.load_state_dict(checkpoint)
         else:
-            # Záložní varianta, pokud by šlo o starý holý model
-            if isinstance(checkpoint, dict):
-                model.load_state_dict(checkpoint)
-            else:
-                model = checkpoint
-            loaded_mean, loaded_std = 0.5, 0.5
-            print("Upozornění: Normalizační data nenalezena v checkpointu. Používám nouzový střed (0.5, 0.5).")
+            model = checkpoint
             
-        print(f"Model '{model_name}' úspěšně načten.")
-
-        # OPRAVENO: Transformace upravena na 1 kanál a dynamické statistiky
-        transform = transforms.Compose([
-            transforms.Resize((256, 256)),
-            transforms.ToTensor(),
-            transforms.Normalize((loaded_mean,), (loaded_std,))
-        ])
-
-        save_last_model_path(model_path)
-
-        # --- 4.3. Grafický výběr obrázku k klasifikaci ---
-        image_dir = './syrova_data'
-
-        if not os.path.exists(image_dir):
-            messagebox.showerror("Chyba", f"Adresář '{image_dir}' nebyl nalezen. Vytvořte jej a vložte do něj obrázky .png pro klasifikaci.")
-            main_tk_root.destroy()
-            exit()
-
-        image_files = sorted([f for f in os.listdir(image_dir) if f.lower().endswith('.png')])
-        if not image_files:
-            messagebox.showerror("Chyba", f"V adresáři '{image_dir}' nebyly nalezeny žádné obrázky .png!")
-            main_tk_root.destroy()
-            exit()
-
-        image_select_window = Toplevel(main_tk_root)
-        image_select_window.title("Výběr obrázku k klasifikaci")
-        image_select_window.geometry("400x350")
-
-        image_label = tk.Label(image_select_window, text=f"Zvolte obrázek .png z adresáře '{image_dir}':", font=("Arial", 10, "bold"))
-        image_label.pack(pady=10)
-
-        image_listbox = tk.Listbox(image_select_window, width=50, height=10)
-        for i, file_name in enumerate(image_files):
-            image_listbox.insert(tk.END, f"{file_name} - {i+1}")
-        image_listbox.pack(pady=5)
-
-        def select_image():
-            try:
-                selection_index = image_listbox.curselection()[0]
-                selected_file_name = image_files[selection_index]
-                selected_image_container.append(os.path.join(image_dir, selected_file_name))
-                image_select_window.destroy()
-                main_tk_root.quit()
-            except IndexError:
-                messagebox.showwarning("Upozornění", "Musíte nejdříve kliknutím vybrat obrázek ze seznamu!")
-
-        def select_all_images():
-            classify_all_mode[0] = True
-            image_select_window.destroy()
-            main_tk_root.quit()
-
-        image_button = tk.Button(image_select_window, text="Klasifikovat vybraný obrázek", command=select_image, bg="#008CBA", fg="white")
-        image_button.pack(pady=5)
-
-        all_images_button = tk.Button(image_select_window, text="Klasifikovat VŠECHNY obrázky v adresáři", command=select_all_images, bg="#4CAF50", fg="white", font=("Arial", 9, "bold"))
-        all_images_button.pack(pady=5)
-
-        image_select_window.protocol("WM_DELETE_WINDOW", lambda: main_tk_root.destroy())
-        main_tk_root.mainloop()
-
-        if classify_all_mode[0]:
-            # --- REŽIM: HROMADNÁ KLASIFIKACE ---
-            main_tk_root.destroy()  
-            
-            print(f"\n--- Spouštím hromadnou klasifikaci adresáře '{image_dir}' ---")
-            print(f"{'Třída':<6} | {'Spolehlivost':<9} | {'Jméno souboru':<40}") 
-            print("-" * 61) 
-            
-            for file_name in image_files:
-                full_path = os.path.join(image_dir, file_name)
-                result = classify_image(model, full_path, device, transform, class_names)
-                if result:
-                    prediction, confidence = result
-                    print(f"{prediction:<6} | {f'{confidence:.2f}%':>12} | {file_name:<40}") 
-                else:
-                    print(f"{'ERR':<6} | {'N/A':>12} | {file_name:<40}") 
-        else:
-            # --- REŽIM: JEDEN OBRÁZEK ---
-            if not selected_image_container:
-                print("Výběr obrázku byl zrušen. Ukončuji skript.")
-                main_tk_root.destroy()
-                exit()
-
-            final_image_path = selected_image_container[0]
-
-            print(f"Zobrazení vybraného obrázku: {final_image_path}")
-            try:
-                img = Image.open(final_image_path)
-                max_size = (600, 600)
-                img.thumbnail(max_size, Image.Resampling.LANCZOS)
-
-                image_display_window = Toplevel(main_tk_root)
-                image_display_window.title(f"Vybraný obrázek: {os.path.basename(final_image_path)}")
-
-                img_tk = ImageTk.PhotoImage(img)
-
-                panel = tk.Label(image_display_window, image=img_tk)
-                panel.image = img_tk  
-                panel.pack(padx=10, pady=10)
-
-                def close_display():
-                    image_display_window.destroy()
-                    main_tk_root.quit()
-
-                close_button = tk.Button(image_display_window, text="Zavřít náhled a pokračovat", command=close_display, bg="#f44336", fg="white", font=("Arial", 10))
-                close_button.pack(pady=10)
-
-                image_display_window.update_idletasks()
-                screen_width = main_tk_root.winfo_screenwidth()
-                screen_height = main_tk_root.winfo_screenheight()
-                
-                window_width = image_display_window.winfo_width()
-                window_height = image_display_window.winfo_height()
-                
-                x = (screen_width // 2) - (window_width // 2)
-                y = (screen_height // 2) - (window_height // 2)
-                
-                image_display_window.geometry(f"+{x}+{y}")
-
-                image_display_window.protocol("WM_DELETE_WINDOW", close_display)
-                main_tk_root.mainloop()
-
-            except Exception as e:
-                print(f"Chyba při zobrazení obrázku: {e}")
-
-            main_tk_root.destroy()
-
-            result = classify_image(model, final_image_path, device, transform, class_names)
-
-            if result:
-                prediction, confidence = result
-                print(f"\nPredikce pro obrázek '{final_image_path}':")
-                print(f"Třída: {prediction}")
-                print(f"Spolehlivost (Confidence): {confidence:.2f}%")
-            else:
-                print("Klasifikace obrázku selhala.")
-
+        model = model.to(device)
     except Exception as e:
-        print(f"Chyba při načítání nebo použití modelu: {e}")
-        try:
-            main_tk_root.destroy()
-        except:
-            pass
+        print(f"[KRITICKÁ CHYBA] Nelze načíst checkpoint modelu: {e}")
+        root.destroy()
+        return
+
+    # 4. Spuštění samotné inference (ČISTÝ VÝPIS, ŽÁDNÉ KOPÍROVÁNÍ VIZUÁLŮ)
+    if bulk_mode:
+        # --- REŽIM: HROMADNÁ KLASIFIKACE ---
+        root.destroy()
+        
+        valid_extensions = ('.png', '.jpg', '.jpeg', '.bmp')
+        image_files = [f for f in os.listdir(image_dir) if f.lower().endswith(valid_extensions)]
+        
+        if not image_files:
+            print(f"[VAROVÁNÍ] Ve složce '{image_dir}' nebyly nalezeny žádné podporované obrázky.")
+            return
+            
+        print(f"\n--- Spouštím hromadnou klasifikaci adresáře '{image_dir}' ---")
+        print(f"{'Predikce':<8} | {'Jistota':<10} | {'Název souboru'}")
+        print("-" * 50)
+        
+        for file_name in image_files:
+            full_path = os.path.join(image_dir, file_name)
+            res = classify_image(model, full_path, device, transform, class_names)
+            
+            if res:
+                pred, conf = res
+                print(f"{pred:<8} | {conf:>8.2f}% | {file_name}")
+            else:
+                print(f"{'CHYBA':<8} | {'-':>10} | {file_name}")
+                
+        print(f"\n[HOTOVO] Analýza složky '{image_dir}' byla dokončena.")
+        
+    else:
+        # --- REŽIM: JEDEN OBRÁZEK ---
+        show_image_preview(root, single_image_path)
+        root.destroy()
+        
+        res = classify_image(model, single_image_path, device, transform, class_names)
+        if res:
+            pred, conf = res
+            print(f"\nVýsledek analýzy pro: {os.path.basename(single_image_path)}")
+            print(f"  Verdikt:  {pred}")
+            print(f"  Jistota:  {conf:.2f}%")
+
+if __name__ == "__main__":
+    main()
