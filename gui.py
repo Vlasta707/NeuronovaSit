@@ -31,7 +31,8 @@ def run_init_gui(initial_model_path=""):
     entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
     
     def browse_model():
-        path = filedialog.askopenfilename(filetypes=[("PyTorch Model", "*.pth")])
+        initial_dir = os.path.dirname(model_path_var.get()) if model_path_var.get() else os.getcwd()
+        path = filedialog.askopenfilename(initialdir=initial_dir, filetypes=[("PyTorch Model", "*.pth")])
         if path:
             model_path_var.set(path)
             
@@ -40,11 +41,15 @@ def run_init_gui(initial_model_path=""):
     btn_frame = tk.Frame(root)
     btn_frame.pack(pady=30)
     
+    # Nastavení výchozí složky pro vyhledávání obrázků
+    default_img_dir = "syrova_data"
+    img_initial_dir = default_img_dir if os.path.exists(default_img_dir) else os.getcwd()
+    
     def on_single():
         if not os.path.exists(model_path_var.get()):
             messagebox.showerror("Chyba", "Vybraný model neexistuje!")
             return
-        path = filedialog.askopenfilename(filetypes=[("Obrázky", "*.png *.jpg *.jpeg *.bmp")])
+        path = filedialog.askopenfilename(initialdir=img_initial_dir, filetypes=[("Obrázky", "*.png *.jpg *.jpeg *.bmp")])
         if path:
             selected_image_container[0] = path
             root.quit()
@@ -53,7 +58,7 @@ def run_init_gui(initial_model_path=""):
         if not os.path.exists(model_path_var.get()):
             messagebox.showerror("Chyba", "Vybraný model neexistuje!")
             return
-        path = filedialog.askdirectory(title="Vyber složku s obrázky pro hromadnou klasifikaci")
+        path = filedialog.askdirectory(title="Vyber složku s obrázky pro hromadnou klasifikaci", initialdir=img_initial_dir)
         if path:
             image_dir_container[0] = path
             classify_all_mode[0] = True

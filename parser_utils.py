@@ -28,15 +28,22 @@ def parse_md_file(file_path):
     return mean, std
 
 def load_last_model_path(config_file="last_model.txt"):
-    """Načte cestu k naposledy použitému checkpointu ze souboru."""
+    """Načte cestu k naposledy použitému checkpointu. Pokud neexistuje, vrátí default."""
+    DEFAULT_MODEL_PATH = "checkpoints/best_model.pth"
+    
     if os.path.exists(config_file):
         try:
             with open(config_file, "r", encoding="utf-8") as f:
                 path = f.read().strip()
-                if os.path.exists(path):
+                if path and os.path.exists(path):
                     return path
         except Exception as e:
             print(f"[VAROVÁNÍ] Nepodařilo se načíst konfiguraci: {e}")
+            
+    # Pokud historie neexistuje, zkusíme vrátit defaultní model, pokud fyzicky existuje
+    if os.path.exists(DEFAULT_MODEL_PATH):
+        return DEFAULT_MODEL_PATH
+        
     return ""
 
 def save_last_model_path(path, config_file="last_model.txt"):
