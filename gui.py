@@ -12,31 +12,34 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 def parse_training_logs(md_path):
-    """Vyparsuje z .md logu hodnoty pro vykreslení grafu."""
-    epochs, train_loss, val_loss, train_acc, val_acc = [], [], [], [], []
-    if not os.path.exists(md_path):
+    """Parruje historii ztrát (Loss) z tvého specifického Markdown logu."""
+    if not md_path or not os.path.exists(md_path):
         return None
         
+    steps = []
+    losses = []
+    step_counter = 0
+    
     try:
         with open(md_path, 'r', encoding='utf-8') as f:
             for line in f:
-                # Hledáme řádky typu: Epoch 1/20 -> Train Loss: 0.25..., Val Loss: 0.31...
-                if "Epoch" in line and "Train Loss" in line:
-                    ep_match = re.search(r'Epoch\s+(\d+)', line)
-                    tl_match = re.search(r'Train Loss:\s*([\d.]+)', line)
-                    vl_match = re.search(r'Val Loss:\s*([\d.]+)', line)
-                    ta_match = re.search(r'Train Acc:\s*([\d.]+)', line)
-                    va_match = re.search(r'Val Acc:\s*([\d.]+)', line)
-                    
-                    if ep_match and tl_match and vl_match:
-                        epochs.append(int(ep_match.group(1)))
-                        train_loss.append(float(tl_match.group(1)))
-                        val_loss.append(float(vl_match.group(1)))
-                        if ta_match: train_acc.append(float(ta_match.group(1)))
-                        if va_match: val_acc.append(float(va_match.group(1)))
-        return epochs, train_loss, val_loss, train_acc, val_acc
+                # Hledáme řádky tabulky s hodnotami, např.: | 1/20 | 5/150 | 0.6543 |
+                if line.startswith('|') and '/' in line:
+                    parts = [p.strip() for p in line.split('|')]
+                    if len(parts) >= 4:
+                        try:
+                            loss_val = float(parts[3])
+                            step_counter += 1
+                            steps.append(step_counter)
+                            losses.append(loss_val)
+                        except ValueError:
+                            continue # Přeskočí hlavičku tabulky
+                            
+        if not losses:
+            return None
+        return steps, losses
     except Exception as e:
-        print(f"[VAROVÁNÍ] Nepodařilo se vyparsovat grafy z logu: {e}")
+        print(f"[CHYBA] Selhalo čtení logu: {e}")
         return None
 
 def run_init_gui(initial_model_path=""):
@@ -68,7 +71,7 @@ def run_init_gui(initial_model_path=""):
     entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
     
     def update_graph():
-        """Překreslí graf podle aktuálně zvoleného modelu s chytřejším hledáním logu."""
+        """Vykreslí vývoj ztráty (Loss) během tréninku."""
         if graph_frame_container[0]:
             graph_frame_container[0].destroy()
             
@@ -76,63 +79,40 @@ def run_init_gui(initial_model_path=""):
         if not current_pth or not os.path.exists(current_pth):
             return
             
-        # 1. Pokus: Hledáme .md soubor se stejným názvem jako .pth
+        # Hledání .md logu v adresáři
         current_md = current_pth.replace('.pth', '.md')
-        
-        # 2. Pokus: Pokud neexistuje, zkusíme najít jakýkoliv .md soubor ve stejné složce
         if not os.path.exists(current_md):
             model_dir = os.path.dirname(current_pth)
-            model_name_base = os.path.basename(current_pth).replace('.pth', '')
-            
             if os.path.exists(model_dir):
-                all_files = os.listdir(model_dir)
-                # Hledáme .md soubor, který v sobě má název modelu, nebo prostě jakýkoliv .md soubor
-                md_files = [f for f in all_files if f.lower().endswith('.md')]
-                
-                # Zkusíme najít ten, co obsahuje aspoň část názvu modelu
-                best_match = [f for f in md_files if model_name_base in f]
-                if best_match:
-                    current_md = os.path.join(model_dir, best_match[0])
-                elif md_files:
-                    # Nouzovka: Vezmeme první .md soubor ve složce (např. train.md)
+                md_files = [f for f in os.listdir(model_dir) if f.lower().endswith('.md')]
+                if md_files:
                     current_md = os.path.join(model_dir, md_files[0])
 
-        # Načtení dat z logu
-        data = parse_training_logs(current_md)
-        if not data or not data[0]:
-            # Pokud log opravdu nikde nenašel, zobrazíme placeholder
+        log_data = parse_training_logs(current_md)
+        
+        if not log_data:
+            # Pokud log neexistuje nebo je prázdný, ukáže se zpráva
             graph_frame_container[0] = tk.Frame(root, height=300)
             graph_frame_container[0].pack(fill="both", expand=True, padx=20, pady=10)
             tk.Label(graph_frame_container[0], text="(Pro tento model nebyl nalezen tréninkový .md log s grafem)", fg="gray").pack(pady=100)
             return
             
-        epochs, t_loss, v_loss, t_acc, v_acc = data
+        steps, losses = log_data
         
-        # Vytvoření Matplotlib grafu
+        # Vykreslení grafu ztráty
         graph_frame_container[0] = tk.Frame(root)
         graph_frame_container[0].pack(fill="both", expand=True, padx=20, pady=10)
         
         fig = Figure(figsize=(5, 3.5), dpi=100)
+        ax = fig.add_subplot(111)
         
-        # Graf pro Loss
-        ax1 = fig.add_subplot(211)
-        ax1.plot(epochs, t_loss, 'r-', label='Train Loss')
-        ax1.plot(epochs, v_loss, 'b-', label='Val Loss')
-        ax1.set_ylabel('Loss')
-        ax1.legend(loc='upper right', fontsize='small')
-        ax1.grid(True, linestyle='--', alpha=0.6)
-        ax1.set_title(f"Historie učení: {os.path.basename(current_md)}", fontsize=10)
+        ax.plot(steps, losses, 'r-', linewidth=1.5, label='Tréninková ztráta (Loss)')
+        ax.set_ylabel('Ztráta (Loss)')
+        ax.set_xlabel('Krok tréninku (Měření v dávkách)')
+        ax.legend(loc='upper right')
+        ax.grid(True, linestyle='--', alpha=0.6)
+        ax.set_title(f"Průběh trénování: {os.path.basename(current_md)}", fontsize=10, fontweight='bold')
         
-        # Graf pro Accuracy
-        ax2 = fig.add_subplot(212)
-        if t_acc and v_acc:
-            ax2.plot(epochs, t_acc, 'r--', label='Train Acc')
-            ax2.plot(epochs, v_acc, 'b--', label='Val Acc')
-            ax2.set_ylabel('Accuracy (%)')
-            ax2.set_xlabel('Epocha')
-            ax2.legend(loc='lower right', fontsize='small')
-            ax2.grid(True, linestyle='--', alpha=0.6)
-            
         fig.tight_layout()
         
         canvas = FigureCanvasTkAgg(fig, master=graph_frame_container[0])
